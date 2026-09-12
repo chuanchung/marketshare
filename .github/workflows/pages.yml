@@ -5,15 +5,13 @@ on:
   workflow_dispatch:
     inputs:
       start_month:
-        description: 'First historical month (YYYY-MM); bundled data begins 2023-01'
+        description: 'First historical month (YYYY-MM); bundled data begins 2015-01'
         required: false
-        default: '2023-01'
+        default: '2015-01'
   schedule:
     - cron: '0 3 8,12,16,20 * *'
 permissions:
   contents: read
-  pages: write
-  id-token: write
 concurrency:
   group: github-pages
   cancel-in-progress: false
@@ -32,7 +30,7 @@ jobs:
       - name: Fetch newly available official months
         if: github.event_name != 'push'
         env:
-          START_MONTH: ${{ inputs.start_month || '2023-01' }}
+          START_MONTH: ${{ inputs.start_month || '2015-01' }}
         run: python scripts/update_data.py --start "$START_MONTH"
       - name: Refresh recent reports for official corrections
         if: github.event_name != 'push'
@@ -45,8 +43,6 @@ jobs:
           node --check site/app.js
           node --check site/engine.js
       - uses: actions/configure-pages@v5
-        with:
-          enablement: true
       - uses: actions/upload-pages-artifact@v4
         with:
           path: site
@@ -63,5 +59,3 @@ jobs:
       - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4
-
-

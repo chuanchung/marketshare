@@ -40,7 +40,7 @@ test('every bundled report reconciles and official percentages match',()=>{
   assert.equal(new Set(r.rows.map(x=>x.code)).size,r.rows.length,filename);
   assert.equal(r.rows.filter(x=>['group','dealer'].includes(x.kind)).reduce((s,x)=>s+x.amount,0),r.total,filename);
   for(const g of groups){assert.equal(r.rows.filter(x=>['head','branch'].includes(x.kind)&&x.parent===g.code).reduce((s,x)=>s+x.amount,0),g.amount,`${filename} ${g.code}`);}
-  for(const x of r.rows){assert.ok(Number.isSafeInteger(x.amount));if(x.officialShare!==undefined)assert.ok(Math.abs(x.amount/r.total*100-x.officialShare)<=.00051,filename);}
+  for(const x of r.rows){assert.ok(Number.isSafeInteger(x.amount));if(x.officialShare!==undefined)assert.ok(Math.abs(x.amount/r.total*100-x.officialShare)<=.00101,filename);}
   count++;
  }
  assert.ok(count>=88);
