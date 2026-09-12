@@ -1,6 +1,6 @@
 # 券商市占觀測站
 
-GitHub Pages 靜態網站，查詢券商總公司經紀合計、總公司營業單位及各分公司在上市、上櫃與合併市場的市占率。包含堆疊長條圖、月度折線圖、可搜尋明細及結束營業紀錄。
+GitHub Pages 靜態網站，查詢券商總公司經紀合計、總公司營業單位及各分公司在上市、上櫃與合併市場的市占率。包含可切換市占率／成交金額的堆疊長條圖、最多十家總公司或分公司的月度市占率比較曲線、可搜尋明細及結束營業紀錄。
 
 已收錄 **2023-01 至 2026-08，涵蓋 44 個月、88 份已驗證官方月報（44 個月具完整雙市場資料）**。沒有使用模擬資料。
 
@@ -15,7 +15,7 @@ GitHub Pages 靜態網站，查詢券商總公司經紀合計、總公司營業�
 
 網站全部使用相對路徑，支援 GitHub Pages 專案子目錄，不需要 API 金鑰或伺服器。
 
-部署方式依 [GitHub Pages 官方自訂 workflow 文件](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)。目前尚未指定目標儲存庫，這份交付尚未發布到 GitHub。
+部署方式依 [GitHub Pages 官方自訂 workflow 文件](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)。目標儲存庫為 `chuanchung/market-share`。
 
 ## 本機使用
 

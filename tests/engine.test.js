@@ -1,7 +1,7 @@
 import{test}from'node:test';
 import assert from'node:assert/strict';
 import{readFileSync,readdirSync}from'node:fs';
-import{aggregate,monthly,monthRange}from'../site/engine.js';
+import{aggregate,monthly,monthlyEntities,monthRange}from'../site/engine.js';
 const row=(code,amount,kind='group',parent=code)=>({code,name:code,amount,kind,parent});
 const report=(month,market,total,rows)=>({month,market,total,rows});
 test('cross-month percentages use turnover weights, not arithmetic mean',()=>{
@@ -21,6 +21,11 @@ test('branch identity retains case and explicit monthly parent mapping',()=>{
 test('missing broker stays missing in trend, reported zero stays zero',()=>{
  const p=monthly([report('2025-01','twse',100,[row('102*',0)]),report('2025-02','twse',100,[])],'twse',['102*']);
  assert.equal(p[0].values[0].share,0);assert.equal(p[1].values[0],null);
+});
+test('mixed company and branch trend selections retain their own parent mapping',()=>{
+ const reports=[report('2025-01','twse',100,[row('102*',30),row('1020',10,'head','102*'),row('1021',20,'branch','102*'),row('980*',40),row('9801',40,'branch','980*')])];
+ const p=monthlyEntities(reports,'twse',[{code:'102*',kind:'group'},{code:'9801',kind:'branch',parent:'980*'}]);
+ assert.deepEqual(p[0].values.map(x=>x.amount),[30,40]);
 });
 test('range spans years and rejects inverted dates',()=>{
  assert.deepEqual(monthRange('2024-12','2025-02'),['2024-12','2025-01','2025-02']);

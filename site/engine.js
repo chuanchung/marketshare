@@ -24,3 +24,9 @@ export function monthly(reports,market,codes,kind='group',parent=''){
   return {month,values:codes.map(code=>a.rows.find(r=>r.code===code)??null)};
  });
 }
+export function monthlyEntities(reports,market,entities){
+ return [...new Set(reports.map(r=>r.month))].sort().map(month=>({month,values:entities.map(entity=>{
+  const a=aggregate(reports.filter(r=>r.month===month),market,entity.kind==='group'?'group':'branch',entity.parent||'');
+  return a.rows.find(r=>r.code===entity.code)??null;
+ })}));
+}
