@@ -1,0 +1,1 @@
+{"name":"taiwan-broker-market-share","private":true,"type":"module","scripts":{"test":"node --test tests/engine.test.js","check":"node --check site/app.js && node --check site/engine.js"}}
