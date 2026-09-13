@@ -9,7 +9,8 @@ on:
         required: false
         default: '2015-01'
   schedule:
-    - cron: '0 3 8,12,16,20 * *'
+    - cron: '50 23 * * *'
+      timezone: 'Asia/Taipei'
 permissions:
   contents: read
 concurrency:
