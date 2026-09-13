@@ -12,7 +12,7 @@ on:
     - cron: '50 23 * * *'
       timezone: 'Asia/Taipei'
 permissions:
-  contents: read
+  contents: write
 concurrency:
   group: github-pages
   cancel-in-progress: false
@@ -35,16 +35,21 @@ jobs:
         env:
           START_MONTH: ${{ inputs.start_month || '2015-01' }}
         run: python scripts/update_data.py --start "$START_MONTH"
-      - name: Refresh recent reports for official corrections
-        if: github.event_name != 'push'
-        run: |
-          START=$(python -c "import datetime as d; t=d.date.today().replace(day=1); print((t-d.timedelta(days=93)).strftime('%Y-%m'))")
-          python scripts/update_data.py --start "$START" --refresh
       - name: Validate data and calculations
         run: |
           npm test
           node --check site/app.js
           node --check site/engine.js
+      - name: Save newly verified monthly data
+        if: github.event_name != 'push'
+        run: |
+          if ! git diff --quiet -- site/data; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add site/data
+            git commit -m "Update verified official monthly data"
+            git push origin HEAD:main
+          fi
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4
         with:

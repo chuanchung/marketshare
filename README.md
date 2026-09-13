@@ -15,7 +15,7 @@ GitHub Pages 靜態網站，查詢券商總公司經紀合計、總公司營業�
 
 網站全部使用相對路徑，支援 GitHub Pages 專案子目錄，不需要 API 金鑰或伺服器。
 
-部署方式依 [GitHub Pages 官方自訂 workflow 文件](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)。目標儲存庫為 `chuanchung/market-share`。
+部署方式依 [GitHub Pages 官方自訂 workflow 文件](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)。目標儲存庫為 `chuanchung/marketshare`。
 
 ## 本機使用
 
@@ -40,7 +40,7 @@ python scripts/update_data.py --start 2015-01
 python scripts/update_data.py --start 2025-01 --end 2025-12 --refresh
 ```
 
-自動流程在每月 8、12、16、20 日台灣時間 11:00 檢查新月份並重抓近期報表。排程可能延遲，實際以 GitHub 執行時間為準。推送部署使用版本庫已有的資料；手動與排程部署會抓取新資料。更新結果包含在 Pages 部署產物，不會自動提交回原始碼儲存庫。需要保存歷史更正時，可本機執行更新並提交 JSON。
+自動流程每天台灣時間 23:50 檢查新月份。已存在且通過驗證的月報不會重新下載；只有官方新增而版本庫尚未收錄的月份會下載、驗證、提交並部署。推送部署只使用版本庫已有的資料；手動執行也會跳過既有月份，除非在本機明確使用 `--refresh`。排程可能延遲，實際以 GitHub 執行時間為準。
 
 若官方下載失敗、格式改變或金額核對不符，workflow 失敗並保留前次線上網站。若官方下載回傳錯誤月份，會排除該檔案並記錄警告，其他正確月份仍可更新；不會把缺失金額填為零。對官方格式更動採明確報錯，而非猜測新欄位。
 
@@ -77,4 +77,4 @@ npm test
 - `tests/engine.test.js`：資料及計算測試。
 - `.github/workflows/pages.yml`：更新與部署。
 
-官方下載遇到企業代理憑證的 Python 3.13 嚴格驗證相容性问题時，可設定 `BROKER_TLS_COMPAT=1`；仍啟用憑證鏈與主機驗證。一般 GitHub runner 不需此設定。
+官方下載遇到不完整憑證鏈時，可設定 `BROKER_TLS_COMPAT=1`。程式會先正常驗證 HTTPS；只有憑證鏈驗證失敗後的 `curl` 備援會略過憑證檢查，下載內容仍須通過月份、格式、金額與總分公司合計驗證才會發布。

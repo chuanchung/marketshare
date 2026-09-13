@@ -310,7 +310,7 @@ def main():
     args=parser.parse_args()
     for value in (args.start,args.end): dt.datetime.strptime(value,'%Y-%m')
     if args.start>args.end: parser.error('start must not exceed end')
-    errors=[]; warnings=[]
+    errors=[]; warnings=[]; changed=False
     for year in range(int(args.start[:4]),int(args.end[:4])+1):
         for market,parse in [('twse',parse_twse),('tpex',parse_tpex)]:
             selected=[f'{year}-{m:02d}' for m in range(1,13) if args.start<=f'{year}-{m:02d}'<=args.end]
@@ -326,15 +326,21 @@ def main():
                     report=parse(blob,month)
                     report.update(month=month,verifiedMonth=month,market=market,source=url,sha256=hashlib.sha256(blob).hexdigest())
                     save(path,report)
+                    changed=True
                     print(f'{month} {market}: {len(report["rows"])} rows, reconciled',flush=True)
                 except UnavailableMonth as e:
                     warnings.append(f'{month}/{market}: {e}')
                     print('WARNING: '+warnings[-1],flush=True)
                 except Exception as e: errors.append(f'{month}/{market}: {e}'); print(errors[-1],flush=True)
                 time.sleep(.15)
-    try: save(DATA/'closures.json',closures())
-    except Exception as e: errors.append(f'closures: {e}')
-    rebuild_manifest(errors,warnings)
+    closures_path=DATA/'closures.json'
+    if args.refresh or not closures_path.exists():
+        try:
+            save(closures_path,closures())
+            changed=True
+        except Exception as e: errors.append(f'closures: {e}')
+    if changed or not (DATA/'manifest.json').exists():
+        rebuild_manifest(errors,warnings)
     if errors: raise SystemExit('\n'.join(errors))
 
 if __name__=='__main__': main()
