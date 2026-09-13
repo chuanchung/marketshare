@@ -19,6 +19,8 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      BROKER_TLS_COMPAT: '1'
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v5
