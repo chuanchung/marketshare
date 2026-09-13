@@ -1,6 +1,7 @@
 """Fetch official monthly reports; reject inconsistent data before publication."""
 from __future__ import annotations
 import argparse, datetime as dt, hashlib, io, json, os, re, ssl, time, urllib.request, urllib.parse, zipfile
+import certifi
 from pathlib import Path
 import xlrd
 
@@ -12,6 +13,8 @@ class UnavailableMonth(ValueError):
 
 def fetch(url):
     context = ssl.create_default_context()
+    # Supplement the runner's OS trust store with Mozilla's current CA bundle.
+    context.load_verify_locations(cafile=certifi.where())
     # Optional compatibility for enterprise root certificates; verification stays enabled.
     if os.environ.get('BROKER_TLS_COMPAT') == '1':
         context.verify_flags &= ~ssl.VERIFY_X509_STRICT
