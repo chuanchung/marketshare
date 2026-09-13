@@ -1,6 +1,6 @@
 """Fetch official monthly reports; reject inconsistent data before publication."""
 from __future__ import annotations
-import argparse, datetime as dt, hashlib, io, json, os, re, ssl, time, urllib.request, urllib.parse, zipfile
+import argparse, datetime as dt, hashlib, io, json, os, re, ssl, subprocess, time, urllib.error, urllib.request, urllib.parse, zipfile
 import certifi
 from pathlib import Path
 import xlrd
@@ -32,6 +32,16 @@ def fetch(url):
             })
             with urllib.request.urlopen(req, context=context, timeout=45) as response:
                 return response.read()
+        except urllib.error.URLError as exc:
+            if isinstance(exc.reason, ssl.SSLCertVerificationError):
+                result = subprocess.run(
+                    ['curl', '--fail', '--location', '--silent', '--show-error',
+                     '--max-time', '45', '--user-agent', 'Mozilla/5.0', url],
+                    check=True, capture_output=True,
+                )
+                return result.stdout
+            if attempt == 2: raise
+            time.sleep(2 ** attempt)
         except Exception:
             if attempt == 2: raise
             time.sleep(2 ** attempt)
