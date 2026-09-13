@@ -34,9 +34,18 @@ def fetch(url):
                 return response.read()
         except urllib.error.URLError as exc:
             if isinstance(exc.reason, ssl.SSLCertVerificationError):
+                curl_args = [
+                    'curl', '--fail', '--location', '--silent', '--show-error',
+                    '--max-time', '45', '--user-agent', 'Mozilla/5.0',
+                ]
+                # Some official TWSE/TPEX endpoints occasionally serve an
+                # incomplete certificate chain. Compatibility mode is limited
+                # to this fallback; report structure and totals are validated
+                # before any downloaded data can be published.
+                if os.environ.get('BROKER_TLS_COMPAT') == '1':
+                    curl_args.append('--insecure')
                 result = subprocess.run(
-                    ['curl', '--fail', '--location', '--silent', '--show-error',
-                     '--max-time', '45', '--user-agent', 'Mozilla/5.0', url],
+                    [*curl_args, url],
                     check=True, capture_output=True,
                 )
                 return result.stdout
