@@ -6,6 +6,9 @@ export function shiftMonth(month,offset){
 export function growthRate(current,previous){
  return Number.isFinite(current)&&Number.isFinite(previous)&&previous!==0?(current/previous-1)*100:null;
 }
+export function positiveBaseGrowthRate(current,previous){
+ return Number.isFinite(previous)&&previous>0?growthRate(current,previous):null;
+}
 export function monthRange(start,end){
  if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)throw Error('請選擇有效的起訖月份，起始月份不可晚於結束月份。');
  const out=[];let [y,m]=start.split('-').map(Number);

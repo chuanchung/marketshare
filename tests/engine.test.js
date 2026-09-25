@@ -1,7 +1,7 @@
 import{test}from'node:test';
 import assert from'node:assert/strict';
 import{readFileSync,readdirSync}from'node:fs';
-import{aggregate,growthRate,monthly,monthlyEntities,monthRange,shiftMonth}from'../site/engine.js';
+import{aggregate,growthRate,monthly,monthlyEntities,monthRange,positiveBaseGrowthRate,shiftMonth}from'../site/engine.js';
 const row=(code,amount,kind='group',parent=code)=>({code,name:code,amount,kind,parent});
 const report=(month,market,total,rows)=>({month,market,total,rows});
 test('cross-month percentages use turnover weights, not arithmetic mean',()=>{
@@ -52,6 +52,9 @@ test('growth helpers handle month boundaries and unavailable bases',()=>{
  assert.ok(Math.abs(growthRate(120,100)-20)<1e-12);
  assert.equal(growthRate(100,0),null);
  assert.equal(growthRate(100,null),null);
+ assert.ok(Math.abs(positiveBaseGrowthRate(120,100)-20)<1e-12);
+ assert.equal(positiveBaseGrowthRate(20,-10),null);
+ assert.equal(positiveBaseGrowthRate(-20,10),-300);
 });
 test('every bundled report reconciles and official percentages match',()=>{
  const dir=new URL('../site/data/months/',import.meta.url);let count=0;
