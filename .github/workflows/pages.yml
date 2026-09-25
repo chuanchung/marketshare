@@ -35,6 +35,11 @@ jobs:
         env:
           START_MONTH: ${{ inputs.start_month || '2015-01' }}
         run: python scripts/update_data.py --start "$START_MONTH"
+      - name: Fetch newly available broker financial reports
+        if: github.event_name != 'push'
+        env:
+          START_MONTH: ${{ inputs.start_month || '2015-01' }}
+        run: python scripts/update_eps.py --start "$START_MONTH"
       - name: Validate data and calculations
         run: |
           npm test

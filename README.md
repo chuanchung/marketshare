@@ -1,6 +1,6 @@
 # 券商市占觀測站
 
-GitHub Pages 靜態網站，查詢券商總公司經紀合計、總公司營業單位及各分公司在上市、上櫃與合併市場的市占率。包含可切換市占率／成交金額的堆疊長條圖、最多十家總公司或分公司的月度市占率比較曲線、可搜尋明細及結束營業紀錄。
+GitHub Pages 靜態網站，查詢券商總公司經紀合計、總公司營業單位及各分公司在上市、上櫃與合併市場的市占率，並提供綜合證券商估算 EPS 排行與月度走勢。包含可切換市占率／成交金額的堆疊長條圖、最多十家總公司或分公司的月度市占率比較曲線、可搜尋明細及結束營業紀錄。
 
 已收錄 **2015-01 至 2026-08，涵蓋 140 個月、280 份已驗證官方月報（140 個月具完整雙市場資料）**。沒有使用模擬資料。
 
@@ -32,6 +32,7 @@ python -m http.server 8765 --directory site
 ```sh
 pip install -r requirements.txt
 python scripts/update_data.py --start 2015-01
+python scripts/update_eps.py --start 2015-01
 ```
 
 補抓指定區間或重抓修訂資料：
@@ -74,6 +75,7 @@ npm test
 
 - `site/`：全部公開靜態檔與已驗證月資料。
 - `scripts/update_data.py`：官方下載、解析及檢核。
+- `scripts/update_eps.py`：綜合證券商財務資料下載及估算 EPS 計算。
 - `tests/engine.test.js`：資料及計算測試。
 - `.github/workflows/pages.yml`：更新與部署。
 

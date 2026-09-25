@@ -27,6 +27,20 @@ test('mixed company and branch trend selections retain their own parent mapping'
  const p=monthlyEntities(reports,'twse',[{code:'102*',kind:'group'},{code:'9801',kind:'branch',parent:'980*'}]);
  assert.deepEqual(p[0].values.map(x=>x.amount),[30,40]);
 });
+test('every bundled EPS report follows the documented capital-based formula',()=>{
+ const files=readdirSync(new URL('../site/data/eps/',import.meta.url)).filter(x=>x.endsWith('.json'));
+ assert.equal(files.length,140);
+ for(const file of files){
+  const report=JSON.parse(readFileSync(new URL(`../site/data/eps/${file}`,import.meta.url)));
+  assert.equal(report.month,file.slice(0,7));assert.ok(report.rows.length>=20);
+  assert.equal(new Set(report.rows.map(r=>r.code)).size,report.rows.length);
+  for(const row of report.rows){
+   assert.equal(row.estimatedShares,Math.round(row.capitalThousands*100));
+   assert.ok(Math.abs(row.estimatedEps-row.netIncomeThousands*10/row.capitalThousands)<1e-6);
+   assert.equal(row.preferredDividends,null);
+  }
+ }
+});
 test('range spans years and rejects inverted dates',()=>{
  assert.deepEqual(monthRange('2024-12','2025-02'),['2024-12','2025-01','2025-02']);
  assert.throws(()=>monthRange('2025-02','2025-01'));
