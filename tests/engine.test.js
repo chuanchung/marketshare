@@ -1,7 +1,7 @@
 import{test}from'node:test';
 import assert from'node:assert/strict';
 import{readFileSync,readdirSync}from'node:fs';
-import{aggregate,monthly,monthlyEntities,monthRange}from'../site/engine.js';
+import{aggregate,growthRate,monthly,monthlyEntities,monthRange,shiftMonth}from'../site/engine.js';
 const row=(code,amount,kind='group',parent=code)=>({code,name:code,amount,kind,parent});
 const report=(month,market,total,rows)=>({month,market,total,rows});
 test('cross-month percentages use turnover weights, not arithmetic mean',()=>{
@@ -45,6 +45,13 @@ test('every bundled EPS report follows the documented capital-based formula',()=
 test('range spans years and rejects inverted dates',()=>{
  assert.deepEqual(monthRange('2024-12','2025-02'),['2024-12','2025-01','2025-02']);
  assert.throws(()=>monthRange('2025-02','2025-01'));
+});
+test('growth helpers handle month boundaries and unavailable bases',()=>{
+ assert.equal(shiftMonth('2025-01',-1),'2024-12');
+ assert.equal(shiftMonth('2025-12',2),'2026-02');
+ assert.ok(Math.abs(growthRate(120,100)-20)<1e-12);
+ assert.equal(growthRate(100,0),null);
+ assert.equal(growthRate(100,null),null);
 });
 test('every bundled report reconciles and official percentages match',()=>{
  const dir=new URL('../site/data/months/',import.meta.url);let count=0;
