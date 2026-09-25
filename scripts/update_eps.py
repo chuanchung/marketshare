@@ -1,6 +1,6 @@
 """Download TWSE integrated broker financials and calculate estimated EPS."""
 from __future__ import annotations
-import argparse, datetime as dt, hashlib, io, json, os, re, ssl, urllib.parse, urllib.request
+import argparse, datetime as dt, hashlib, io, json, os, re, ssl, urllib.error, urllib.parse, urllib.request
 from pathlib import Path
 import openpyxl
 import xlrd
@@ -14,9 +14,18 @@ def fetch(url):
     if os.environ.get('BROKER_TLS_COMPAT') == '1':
         context.check_hostname = False
         context.verify_mode = ssl.CERT_NONE
-    request = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-    with urllib.request.urlopen(request, context=context, timeout=60) as response:
-        return response.read()
+    def download(target):
+        request = urllib.request.Request(target, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(request, context=context, timeout=60) as response:
+            return response.read()
+    try:
+        return download(url)
+    except urllib.error.HTTPError as error:
+        # Some legacy static files redirect to the same path on www; wwwc is the
+        # exchange's compatible host for those files.
+        if error.code == 308 and urllib.parse.urlsplit(url).hostname == 'www.twse.com.tw':
+            return download(url.replace('://www.twse.com.tw/', '://wwwc.twse.com.tw/', 1))
+        raise
 
 def save(path, value):
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -46,10 +55,14 @@ def parse(blob, expected_month, source):
             continue
         block = range(i + 1, min(i + 36, len(rows)))
         capital_row = next((n for n in block if compact(rows[n][0]) == '資本'), None)
+        monthly_period = next((n for n in block if compact(rows[n][0]) == '本月'), None)
         current_period = next((n for n in block if compact(rows[n][0]) == '本期'), None)
+        monthly_profit_row = next((n for n in block if monthly_period is not None and n > monthly_period and
+                                   (current_period is None or n < current_period) and
+                                   '稅後淨利' in {compact(rows[n][0]), compact(rows[n][1])}), None)
         profit_row = next((n for n in block if current_period is not None and n > current_period and
                            '稅後淨利' in {compact(rows[n][0]), compact(rows[n][1])}), None)
-        if capital_row is None or profit_row is None:
+        if capital_row is None or monthly_profit_row is None or profit_row is None:
             raise ValueError(f'Unexpected financial report layout near row {i + 1}')
         for col in range(2, len(row)):
             label = compact(row[col])
@@ -58,15 +71,18 @@ def parse(blob, expected_month, source):
                 continue
             raw_code, name = match.groups()
             capital = rows[capital_row][col]
+            monthly_profit = rows[monthly_profit_row][col]
             profit = rows[profit_row][col]
-            if not isinstance(capital, (int, float)) or capital <= 0 or not isinstance(profit, (int, float)):
+            if not isinstance(capital, (int, float)) or capital <= 0 or not isinstance(monthly_profit, (int, float)) or not isinstance(profit, (int, float)):
                 continue
             code = raw_code[:3] + '*' if raw_code.endswith('0') else raw_code
             shares = round(capital * 100)  # 千元 × 1,000 ÷ 每股面額 10 元
             eps = profit * 1000 / shares
+            monthly_eps = monthly_profit * 1000 / shares
             records.append(dict(code=code, rawCode=raw_code, name=name, capitalThousands=capital,
-                                netIncomeThousands=profit, preferredDividends=None,
-                                estimatedShares=shares, estimatedEps=round(eps, 6)))
+                                monthlyNetIncomeThousands=monthly_profit, netIncomeThousands=profit,
+                                preferredDividends=None, estimatedShares=shares,
+                                monthlyEstimatedEps=round(monthly_eps, 6), estimatedEps=round(eps, 6)))
     if len(records) < 20 or len({r['code'] for r in records}) != len(records):
         raise ValueError(f'Invalid EPS broker rows: {len(records)}')
     return dict(month=expected_month, source=source, unit='NTD', basis='cumulative-period',
@@ -90,7 +106,7 @@ def rebuild_manifest():
         months[report['month']] = path.name
         for row in report['rows']:
             brokers[row['code']] = dict(code=row['code'], name=row['name'])
-    save(DATA / 'eps-manifest.json', dict(version=1, updated=dt.datetime.now(dt.timezone.utc).isoformat(),
+    save(DATA / 'eps-manifest.json', dict(version=2, updated=dt.datetime.now(dt.timezone.utc).isoformat(),
          months=months, brokers=sorted(brokers.values(), key=lambda r: r['code'])))
 
 def main():

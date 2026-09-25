@@ -3,7 +3,7 @@ const $=s=>document.querySelector(s),esc=s=>String(s).replace(/[&<>"']/g,c=>({'&
 const fmt=(x,d=2)=>x.toLocaleString('zh-TW',{minimumFractionDigits:d,maximumFractionDigits:d});
 const pct=x=>`${fmt(x,3)}%`,money=x=>x>=1e12?`${fmt(x/1e12)} 兆`:`${fmt(x/1e8)} 億`;
 const kindName={group:'經紀合計',head:'總公司營業單位',branch:'分公司'};
-let manifest,epsManifest,closures=[],reports=[],market='both',mode='bars',barMetric='share',version=0,range=[],viewRows=[],groupRows=[],total=0,trendSelections=[];
+let manifest,epsManifest,closures=[],reports=[],market='both',mode='bars',barMetric='share',epsMode='seasonal',version=0,epsVersion=0,range=[],viewRows=[],groupRows=[],total=0,trendSelections=[];
 const trendColors=['#157c9c','#dc982d','#5b64a0','#2b9d87','#9c567d','#805ad5','#d65f5f','#4c78a8','#72a33b','#8c6d5c'];
 const cache=new Map();
 const epsCache=new Map();
@@ -26,7 +26,6 @@ async function query(){
   if(ticket!==version)return;
   reports=loaded.sort((a,b)=>a.month.localeCompare(b.month)||a.market.localeCompare(b.market));range=months;
   updateBranches();updateTrendBranches();render();$('#results').hidden=false;
-  await renderEps();
   setStatus(`${months[0]} — ${months.at(-1)} · ${months.length} 個月 · ${market==='both'?'上市＋上櫃':market==='twse'?'上市':'上櫃'} · 成交金額加權計算${manifest.errors?.length?' · 部分來源更新未成功，僅顯示已驗證資料':''}`);
  }catch(e){if(ticket===version)setStatus(e.message,true);}
 }
@@ -115,30 +114,53 @@ function renderClosures(b){
  $('#closure-panel').hidden=!rows.length;
  $('#closure-info').innerHTML=rows.map(r=>`<p><strong>${esc(r.name)}（${esc(r.code)}）</strong> · ${r.date} · ${esc(r.reason)}<br>結束營業當時之存續公司或代辦券商：${esc(r.successor||'原始資料未提供')}</p>`).join('')+'<p>名冊記載最後營業日或合併基準日，不代表所有業務均已終止；歷史成交不自動轉入存續券商。</p>';
 }
-async function renderEps(){
- if(!epsManifest||!range.length)return;
- const months=range.filter(m=>epsManifest.months[m]);
- if(!months.length){$('#eps-status').textContent='所選期間沒有綜合證券商財務資料。';$('#eps-chart').innerHTML='';$('#eps-tbody').innerHTML='';return;}
- const loaded=await Promise.all(months.map(async m=>{const p=`data/eps/${m}.json`;if(!epsCache.has(p))epsCache.set(p,await json(p));return epsCache.get(p);}));
- const code=$('#eps-broker').value;
- if(code){
-  const points=loaded.map(r=>({month:r.month,row:r.rows.find(x=>x.code===code)})).filter(x=>x.row);
-  const values=points.map(p=>p.row.estimatedEps),min=Math.min(0,...values),max=Math.max(0,...values),span=Math.max(max-min,.1);
-  const x=i=>65+i*900/Math.max(points.length-1,1),y=v=>260-(v-min)/span*220;
-  let path='',svg=`<svg class="trend-svg" viewBox="0 0 1000 310" role="img" aria-label="估算 EPS 月度走勢"><title>估算 EPS 月度走勢</title>`;
-  for(let i=0;i<=4;i++){const v=min+span*i/4;svg+=`<line x1="65" x2="965" y1="${y(v)}" y2="${y(v)}" stroke="${Math.abs(v)<span/20?'#9aaabd':'#e5ecf2'}"/><text x="52" y="${y(v)+4}" text-anchor="end">${fmt(v,2)}</text>`;}
-  points.forEach((p,i)=>{path+=`${i?'L':'M'}${x(i)} ${y(p.row.estimatedEps)} `;if(i%Math.max(1,Math.ceil(points.length/8))===0||i===points.length-1)svg+=`<text x="${x(i)}" y="293" text-anchor="middle">${p.month}</text>`;svg+=`<circle cx="${x(i)}" cy="${y(p.row.estimatedEps)}" r="3.5" fill="#157c9c"><title>${p.month} ${fmt(p.row.estimatedEps,3)} 元</title></circle>`;});
-  $('#eps-chart').innerHTML=svg+`<path d="${path}" fill="none" stroke="#157c9c" stroke-width="2.7"/></svg>`;
-  $('#eps-status').textContent=`${points[0].row.name} · ${points[0].month} 至 ${points.at(-1).month} · 本期累計估算 EPS（元）`;
-  $('#eps-tbody').innerHTML=points.slice().reverse().map(p=>epsRow(p.row,p.month)).join('');
- }else{
-  const latest=loaded.at(-1),rows=latest.rows.slice().sort((a,b)=>b.estimatedEps-a.estimatedEps),shown=rows.slice(0,15),scale=Math.max(...shown.map(r=>Math.abs(r.estimatedEps)),.01);
-  $('#eps-status').textContent=`${latest.month} · 綜合證券商估算 EPS 排行（前 15 名）`;
-  $('#eps-chart').innerHTML=shown.map((r,i)=>`<div class="eps-bar-row"><span>${String(i+1).padStart(2,'0')}</span><button data-eps-code="${esc(r.code)}">${esc(r.name)}</button><div><i class="${r.estimatedEps<0?'negative':''}" style="width:${Math.abs(r.estimatedEps)/scale*100}%"></i></div><strong>${fmt(r.estimatedEps,3)}</strong></div>`).join('');
-  $('#eps-tbody').innerHTML=rows.map(r=>epsRow(r,latest.month)).join('');
- }
+function epsChart(series,labels,aria){
+ const values=series.flatMap(s=>s.values.filter(v=>v!=null).map(v=>v.value));
+ if(!values.length)return '<div class="empty">所選條件沒有可繪製的 EPS 資料。</div>';
+ const min=Math.min(0,...values),max=Math.max(0,...values),span=Math.max(max-min,.1);
+ const x=i=>65+i*900/Math.max(labels.length-1,1),y=v=>260-(v-min)/span*220;
+ let svg=`<svg class="trend-svg" viewBox="0 0 1000 310" role="img" aria-label="${esc(aria)}"><title>${esc(aria)}</title>`;
+ for(let i=0;i<=4;i++){const v=min+span*i/4;svg+=`<line x1="65" x2="965" y1="${y(v)}" y2="${y(v)}" stroke="${Math.abs(v)<span/40?'#9aaabd':'#e5ecf2'}"/><text x="52" y="${y(v)+4}" text-anchor="end">${fmt(v,2)}</text>`;}
+ labels.forEach((label,i)=>{if(i%Math.max(1,Math.ceil(labels.length/10))===0||i===labels.length-1)svg+=`<text x="${x(i)}" y="293" text-anchor="middle">${esc(label)}</text>`;});
+ series.forEach(s=>{let path='',active=false;s.values.forEach((point,i)=>{if(point==null){active=false;return;}path+=`${active?'L':'M'}${x(i)} ${y(point.value)} `;active=true;svg+=`<circle cx="${x(i)}" cy="${y(point.value)}" r="3.5" fill="${s.color}"><title>${esc(point.title)}：${fmt(point.value,3)} 元</title></circle>`;});svg+=`<path d="${path}" fill="none" stroke="${s.color}" stroke-width="2.7"/>`;});
+ return svg+'</svg>'+`<div class="trend-key">${series.map(s=>`<span><i style="--color:${s.color}"></i>${esc(s.name)}</span>`).join('')}</div>`;
 }
-function epsRow(r,month){return`<tr><td><button data-eps-code="${esc(r.code)}">${esc(r.name)}</button><small>${esc(r.code)}</small></td><td>${month}</td><td>${fmt(r.netIncomeThousands,0)}</td><td>${fmt(r.capitalThousands,0)}</td><td>${fmt(r.estimatedShares,0)}</td><td>${fmt(r.estimatedEps,3)}</td></tr>`;}
+function renderEps(reports){
+ const code=$('#eps-broker').value;
+ const timeline=reports.map(report=>({month:report.month,row:report.rows.find(row=>row.code===code)})),points=timeline.filter(point=>point.row);
+ if(!points.length){$('#eps-title').textContent='EPS 分析';$('#eps-chart').innerHTML='<div class="empty">所選期間沒有這家券商的財務資料。</div>';$('#eps-tbody').innerHTML='';return;}
+ const broker=points.at(-1).row.name;
+ if(epsMode==='seasonal'){
+  const years=[...new Set(points.map(point=>point.month.slice(0,4)))];
+  const series=years.map((year,index)=>{const byMonth=new Map(points.filter(point=>point.month.startsWith(year)).map(point=>[Number(point.month.slice(5)),point]));return{name:`${year} 年`,color:trendColors[index%trendColors.length],values:Array.from({length:12},(_,i)=>{const point=byMonth.get(i+1);return point?{value:point.row.estimatedEps,title:`${year}-${String(i+1).padStart(2,'0')} ${broker}`} :null;})};});
+  $('#eps-title').textContent=`${broker}・各年同期累計 EPS`;
+  $('#eps-chart').innerHTML=epsChart(series,Array.from({length:12},(_,i)=>`${i+1} 月`),'各年同期累計估算 EPS 曲線');
+  $('#eps-status').textContent=`${reports[0].month} — ${reports.at(-1).month} · ${years.length} 個年度有列示 · 各線為報表列示「本期」估算 EPS（元）`;
+ }else{
+  const labels=timeline.map(point=>point.month);
+  const series=[
+   {name:'本月估算 EPS',color:trendColors[0],values:timeline.map(point=>point.row?{value:point.row.monthlyEstimatedEps,title:`${point.month} ${broker} 本月`}:null)},
+   {name:'本期累計估算 EPS',color:trendColors[1],values:timeline.map(point=>point.row?{value:point.row.estimatedEps,title:`${point.month} ${broker} 本期`}:null)}
+  ];
+  $('#eps-title').textContent=`${broker}・每月與累計 EPS`;
+  $('#eps-chart').innerHTML=epsChart(series,labels,'單一券商每月與累計估算 EPS 曲線');
+  $('#eps-status').textContent=`${reports[0].month} — ${reports.at(-1).month} · ${points.length}/${reports.length} 個月列示 · 藍線為本月、金線為報表「本期」`;
+ }
+ $('#eps-tbody').innerHTML=points.slice().reverse().map(point=>epsRow(point.row,point.month)).join('');
+}
+async function queryEps(){
+ if(!epsManifest)return;
+ const ticket=++epsVersion;$('#eps-status').className='eps-status';$('#eps-status').textContent='正在載入及核對所選期間的財務資料…';
+ try{
+  const months=monthRange($('#eps-from').value,$('#eps-to').value);
+  const missing=months.filter(month=>!epsManifest.months[month]);
+  if(missing.length)throw Error(`以下月份尚無綜合證券商財務資料：${missing.join('、')}。請調整 EPS 日期範圍。`);
+  let loaded=[];
+  for(let i=0;i<months.length;i+=8){loaded.push(...await Promise.all(months.slice(i,i+8).map(async month=>{const path=`data/eps/${month}.json`;if(!epsCache.has(path))epsCache.set(path,await json(path));return epsCache.get(path);})));if(ticket!==epsVersion)return;}
+  if(ticket===epsVersion)renderEps(loaded.sort((a,b)=>a.month.localeCompare(b.month)));
+ }catch(error){if(ticket===epsVersion){$('#eps-status').textContent=error.message;$('#eps-status').className='eps-status error';$('#eps-chart').innerHTML='';$('#eps-tbody').innerHTML='';}}
+}
+function epsRow(r,month){return`<tr><td><button data-eps-code="${esc(r.code)}">${esc(r.name)}</button><small>${esc(r.code)}</small></td><td>${month}</td><td>${fmt(r.monthlyNetIncomeThousands,0)}</td><td>${fmt(r.monthlyEstimatedEps,3)}</td><td>${fmt(r.netIncomeThousands,0)}</td><td>${fmt(r.estimatedEps,3)}</td><td>${fmt(r.capitalThousands,0)}</td><td>${fmt(r.estimatedShares,0)}</td></tr>`;}
 function choose(code){if(code.endsWith('*')){$('#broker').value=code;$('#branch').value='';updateBranches();}else{$('#branch').value=code;}render();}
 $('#chart').addEventListener('click',e=>{const b=e.target.closest('[data-code]');if(b)choose(b.dataset.code);});
 $('#tbody').addEventListener('click',e=>{const b=e.target.closest('[data-code]');if(b)choose(b.dataset.code);});
@@ -149,26 +171,30 @@ $('#trend-broker').addEventListener('change',()=>{updateTrendBranches();renderTr
 $('#trend-branch').addEventListener('change',renderTrendPicker);
 $('#trend-add').addEventListener('click',()=>{const entity=trendEntity();if(!entity||trendSelections.length>=10||trendSelections.some(r=>r.code===entity.code&&r.kind===entity.kind&&r.parent===entity.parent))return;trendSelections.push(entity);render();});
 $('#trend-chips').addEventListener('click',e=>{const b=e.target.closest('[data-remove]');if(!b)return;trendSelections.splice(Number(b.dataset.remove),1);render();});
-$('#broker').addEventListener('change',()=>{$('#branch').value='';updateBranches();const code=$('#broker').value;if(code&&[...$('#eps-broker').options].some(o=>o.value===code))$('#eps-broker').value=code;render();renderEps();});
+$('#broker').addEventListener('change',()=>{$('#branch').value='';updateBranches();render();});
 $('#branch').addEventListener('change',render);$('#search').addEventListener('input',renderTable);
-$('#eps-broker').addEventListener('change',renderEps);
-$('.eps-panel').addEventListener('click',e=>{const b=e.target.closest('[data-eps-code]');if(!b)return;$('#eps-broker').value=b.dataset.epsCode;renderEps();});
+$('#feature-tabs').addEventListener('click',e=>{const b=e.target.closest('[data-feature]');if(!b)return;const eps=b.dataset.feature==='eps';$('#market-view').hidden=eps;$('#eps-view').hidden=!eps;$('#feature-tabs').querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x===b));$('.heading .eyebrow').textContent=eps?'BROKER PROFITABILITY':'MARKET SHARE EXPLORER';$('.heading h1').innerHTML=eps?'比較券商的獲利軌跡<span>。</span>':'看見券商的市場版圖<span>。</span>';$('.heading>div:first-child>p:not(.eyebrow)').textContent=eps?'依年度同期、每月與累計估算 EPS 觀察券商獲利變化。':'從整體市場到分公司，以官方成交金額追蹤市占變化。';});
+$('#eps-modes').addEventListener('click',e=>{const b=e.target.closest('[data-eps-mode]');if(!b)return;epsMode=b.dataset.epsMode;$('#eps-modes').querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x===b));queryEps();});
+$('#eps-broker').addEventListener('change',queryEps);
+$('.eps-panel').addEventListener('click',e=>{const b=e.target.closest('[data-eps-code]');if(!b)return;$('#eps-broker').value=b.dataset.epsCode;queryEps();});
 $('#from').addEventListener('change',query);$('#to').addEventListener('change',query);
+$('#eps-from').addEventListener('change',queryEps);$('#eps-to').addEventListener('change',queryEps);
 document.querySelectorAll('[data-period]').forEach(b=>b.addEventListener('click',()=>{const available=Object.keys(manifest.months).filter(m=>marketsFor(market).every(k=>manifest.months[m].includes(k))).sort();const end=available.at(-1);$('#to').value=end;const all=monthRange(available[0],end);$('#from').value=b.dataset.period==='all'?all[0]:all[Math.max(0,all.length-Number(b.dataset.period))];query();}));
+document.querySelectorAll('[data-eps-period]').forEach(b=>b.addEventListener('click',()=>{const available=Object.keys(epsManifest.months).sort(),end=available.at(-1);$('#eps-to').value=end;$('#eps-from').value=b.dataset.epsPeriod==='all'?available[0]:available[Math.max(0,available.length-Number(b.dataset.epsPeriod))];queryEps();}));
 async function init(){try{
  manifest=await json('data/manifest.json');
  const gaps=Object.entries(manifest.months).filter(([m,markets])=>markets.length<2).map(([m,markets])=>`${m} ${markets.includes('twse')?'上櫃':'上市'}`);
  if(gaps.length){$('#data-warning').hidden=false;$('#data-warning').textContent=`資料缺口：${gaps.join('、')}尚無通過年月與金額核對的官方資料；含該月份的相關市場查詢將停用。`;}
  try{closures=(await json('data/closures.json')).rows;}catch{setStatus('結束營業名冊讀取失敗。',true);}
  const months=Object.keys(manifest.months).sort(),complete=months.filter(m=>manifest.months[m].length===2);
- if(!complete.length)throw Error('尚無完整双市場資料，請先執行官方資料更新。');
+ if(!complete.length)throw Error('尚無完整雙市場資料，請先執行官方資料更新。');
  const latest=complete.at(-1);$('#latest').textContent=`資料至 ${latest.replace('-',' / ')}`;
  $('#updated').textContent=`資料整理 ${new Date(manifest.updated).toLocaleDateString('zh-TW')}`;
  for(const id of ['from','to']){$('#'+id).min=months[0];$('#'+id).max=months.at(-1);}
  $('#to').value=latest;$('#from').value=latest;
  $('#broker').innerHTML=option('','全部券商')+(manifest.brokers||[]).map(r=>option(r.code,r.name)).join('');
  $('#trend-broker').innerHTML=option('','選擇券商')+(manifest.brokers||[]).map(r=>option(r.code,r.name)).join('');
- try{epsManifest=await json('data/eps-manifest.json');$('#eps-broker').innerHTML=option('','最新月份全部券商')+epsManifest.brokers.map(r=>option(r.code,r.name)).join('');}catch{$('#eps-status').textContent='EPS 資料讀取失敗。';}
- await query();await renderEps();
+ try{epsManifest=await json('data/eps-manifest.json');const epsMonths=Object.keys(epsManifest.months).sort(),epsLatest=epsMonths.at(-1);for(const id of ['eps-from','eps-to']){$('#'+id).min=epsMonths[0];$('#'+id).max=epsLatest;}$('#eps-to').value=epsLatest;$('#eps-from').value=epsMonths[Math.max(0,epsMonths.length-60)];$('#eps-broker').innerHTML=epsManifest.brokers.map(r=>option(r.code,r.name)).join('');$('#eps-broker').value=epsManifest.brokers.some(r=>r.code==='980*')?'980*':epsManifest.brokers[0]?.code||'';}catch{$('#eps-status').textContent='EPS 資料讀取失敗。';}
+ await Promise.all([query(),queryEps()]);
  }catch(e){setStatus(e.message,true);}}
 init();

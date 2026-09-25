@@ -37,6 +37,7 @@ test('every bundled EPS report follows the documented capital-based formula',()=
   for(const row of report.rows){
    assert.equal(row.estimatedShares,Math.round(row.capitalThousands*100));
    assert.ok(Math.abs(row.estimatedEps-row.netIncomeThousands*10/row.capitalThousands)<1e-6);
+   assert.ok(Math.abs(row.monthlyEstimatedEps-row.monthlyNetIncomeThousands*10/row.capitalThousands)<1e-6);
    assert.equal(row.preferredDividends,null);
   }
  }
