@@ -1,0 +1,252 @@
+{
+  "month": "2026-06",
+  "rows": [
+    {
+      "code": "1020",
+      "name": "合作金庫",
+      "capital": 5206132,
+      "net_month": 199647,
+      "net_ytd": 1388019,
+      "eps_month": 0.3835,
+      "eps_ytd": 2.6661
+    },
+    {
+      "code": "1040",
+      "name": "臺銀",
+      "capital": 3000000,
+      "net_month": 138012,
+      "net_ytd": 822985,
+      "eps_month": 0.46,
+      "eps_ytd": 2.7433
+    },
+    {
+      "code": "1260",
+      "name": "宏遠",
+      "capital": 4036141,
+      "net_month": 309237,
+      "net_ytd": 1314455,
+      "eps_month": 0.7662,
+      "eps_ytd": 3.2567
+    },
+    {
+      "code": "1650",
+      "name": "新商瑞銀",
+      "capital": 1265000,
+      "net_month": 620693,
+      "net_ytd": 2556875,
+      "eps_month": 4.9067,
+      "eps_ytd": 20.2125
+    },
+    {
+      "code": "2180",
+      "name": "亞東",
+      "capital": 4222789,
+      "net_month": 38457,
+      "net_ytd": 698676,
+      "eps_month": 0.0911,
+      "eps_ytd": 1.6545
+    },
+    {
+      "code": "5050",
+      "name": "大展",
+      "capital": 2523532,
+      "net_month": 11798,
+      "net_ytd": 797854,
+      "eps_month": 0.0468,
+      "eps_ytd": 3.1617
+    },
+    {
+      "code": "5260",
+      "name": "美好",
+      "capital": 3122310,
+      "net_month": 63641,
+      "net_ytd": 2174050,
+      "eps_month": 0.2038,
+      "eps_ytd": 6.963
+    },
+    {
+      "code": "5380",
+      "name": "第一金",
+      "capital": 6900000,
+      "net_month": 290592,
+      "net_ytd": 1410638,
+      "eps_month": 0.4211,
+      "eps_ytd": 2.0444
+    },
+    {
+      "code": "5850",
+      "name": "統一",
+      "capital": 16014145,
+      "net_month": 1629273,
+      "net_ytd": 11138988,
+      "eps_month": 1.0174,
+      "eps_ytd": 6.9557
+    },
+    {
+      "code": "6010",
+      "name": "犇亞",
+      "capital": 1137554,
+      "net_month": -65119,
+      "net_ytd": 116238,
+      "eps_month": -0.5724,
+      "eps_ytd": 1.0218
+    },
+    {
+      "code": "6110",
+      "name": "台中銀",
+      "capital": 1947297,
+      "net_month": 30850,
+      "net_ytd": 523439,
+      "eps_month": 0.1584,
+      "eps_ytd": 2.688
+    },
+    {
+      "code": "6160",
+      "name": "中信託",
+      "capital": 7904542,
+      "net_month": 226308,
+      "net_ytd": 2157608,
+      "eps_month": 0.2863,
+      "eps_ytd": 2.7296
+    },
+    {
+      "code": "6480",
+      "name": "福邦",
+      "capital": 3961618,
+      "net_month": 127693,
+      "net_ytd": 419735,
+      "eps_month": 0.3223,
+      "eps_ytd": 1.0595
+    },
+    {
+      "code": "6910",
+      "name": "德信",
+      "capital": 1557201,
+      "net_month": 85618,
+      "net_ytd": 476952,
+      "eps_month": 0.5498,
+      "eps_ytd": 3.0629
+    },
+    {
+      "code": "7000",
+      "name": "兆豐",
+      "capital": 12100000,
+      "net_month": 412707,
+      "net_ytd": 3525902,
+      "eps_month": 0.3411,
+      "eps_ytd": 2.914
+    },
+    {
+      "code": "7030",
+      "name": "致和",
+      "capital": 5044901,
+      "net_month": 220918,
+      "net_ytd": 4950601,
+      "eps_month": 0.4379,
+      "eps_ytd": 9.8131
+    },
+    {
+      "code": "7790",
+      "name": "國票綜合",
+      "capital": 11500000,
+      "net_month": 473331,
+      "net_ytd": 2043409,
+      "eps_month": 0.4116,
+      "eps_ytd": 1.7769
+    },
+    {
+      "code": "8450",
+      "name": "康和",
+      "capital": 7724199,
+      "net_month": -97961,
+      "net_ytd": 3575023,
+      "eps_month": -0.1268,
+      "eps_ytd": 4.6283
+    },
+    {
+      "code": "8560",
+      "name": "新光",
+      "capital": 3234000,
+      "net_month": 260064,
+      "net_ytd": 1247999,
+      "eps_month": 0.8042,
+      "eps_ytd": 3.859
+    },
+    {
+      "code": "8840",
+      "name": "玉山",
+      "capital": 5523000,
+      "net_month": 578367,
+      "net_ytd": 2817337,
+      "eps_month": 1.0472,
+      "eps_ytd": 5.1011
+    },
+    {
+      "code": "8880",
+      "name": "國泰綜合",
+      "capital": 7700000,
+      "net_month": 1121609,
+      "net_ytd": 4411520,
+      "eps_month": 1.4566,
+      "eps_ytd": 5.7292
+    },
+    {
+      "code": "8960",
+      "name": "香港上海匯豐",
+      "capital": 1000000,
+      "net_month": 74582,
+      "net_ytd": 335240,
+      "eps_month": 0.7458,
+      "eps_ytd": 3.3524
+    },
+    {
+      "code": "9100",
+      "name": "群益金鼎",
+      "capital": 24552971,
+      "net_month": 829071,
+      "net_ytd": 7948990,
+      "eps_month": 0.3377,
+      "eps_ytd": 3.2375
+    },
+    {
+      "code": "9200",
+      "name": "凱基",
+      "capital": 21174785,
+      "net_month": 5030231,
+      "net_ytd": 17936284,
+      "eps_month": 2.3756,
+      "eps_ytd": 8.4706
+    },
+    {
+      "code": "9300",
+      "name": "華南永昌",
+      "capital": 6547743,
+      "net_month": 499977,
+      "net_ytd": 3234088,
+      "eps_month": 0.7636,
+      "eps_ytd": 4.9392
+    },
+    {
+      "code": "9600",
+      "name": "富邦",
+      "capital": 16258551,
+      "net_month": 2597605,
+      "net_ytd": 11016469,
+      "eps_month": 1.5977,
+      "eps_ytd": 6.7758
+    },
+    {
+      "code": "9800",
+      "name": "元大",
+      "capital": 71208897,
+      "net_month": 5447855,
+      "net_ytd": 24528346,
+      "eps_month": 0.7651,
+      "eps_ytd": 3.4446
+    }
+  ],
+  "count": 27,
+  "source": "https://www.twse.com.tw/staticFiles/inspection/ftp/03/004/202606_C03004.xlsx",
+  "sha256": "718c4dda903608dc8c61b8f43c74c8cb78475cceb440bfe1c37831e8b8a1fe7f",
+  "downloaded": "2026-09-21T03:30:31.020839+00:00"
+}
