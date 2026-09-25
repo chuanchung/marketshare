@@ -1,4 +1,15 @@
-"""Download TWSE integrated broker financials and calculate estimated EPS."""
+"""Download TWSE integrated broker financials and calculate estimated EPS.
+
+Assumptions and limitations (see also site UI copy):
+- Ordinary share par value is assumed to be NT$10 for all brokers when
+  converting the reported capital (in thousands of NTD) into share count.
+  Most Taiwan securities firms use a NT$10 par value; a minority may differ.
+- Preferred dividends are not available in the source monthly reports, so
+  they are not deducted. The result is therefore an *estimated* EPS, not
+  the audited basic EPS from formal financial statements.
+- "本期" (current period) follows each broker's accounting year; some
+  foreign firms use non-calendar periods.
+"""
 from __future__ import annotations
 import argparse, datetime as dt, hashlib, io, json, os, re, ssl, urllib.error, urllib.parse, urllib.request
 from pathlib import Path
@@ -8,6 +19,9 @@ import xlrd
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / 'site/data'
 EPS_DIR = DATA / 'eps'
+
+# Assumed ordinary share par value (NTD). Used only for estimated EPS.
+PAR_VALUE = 10
 
 def fetch(url):
     context = ssl.create_default_context()
@@ -76,25 +90,45 @@ def parse(blob, expected_month, source):
             if not isinstance(capital, (int, float)) or capital <= 0 or not isinstance(monthly_profit, (int, float)) or not isinstance(profit, (int, float)):
                 continue
             code = raw_code[:3] + '*' if raw_code.endswith('0') else raw_code
-            shares = round(capital * 100)  # 千元 × 1,000 ÷ 每股面額 10 元
+            # capital is in thousands of NTD. Share count ≈ capital_thousands * 1000 / PAR_VALUE.
+            shares = round(capital * 1000 / PAR_VALUE)
             eps = profit * 1000 / shares
             monthly_eps = monthly_profit * 1000 / shares
             records.append(dict(code=code, rawCode=raw_code, name=name, capitalThousands=capital,
                                 monthlyNetIncomeThousands=monthly_profit, netIncomeThousands=profit,
                                 preferredDividends=None, estimatedShares=shares,
-                                monthlyEstimatedEps=round(monthly_eps, 6), estimatedEps=round(eps, 6)))
+                                monthlyEstimatedEps=round(monthly_eps, 6), estimatedEps=round(eps, 6),
+                                assumedParValue=PAR_VALUE))
     if len(records) < 20 or len({r['code'] for r in records}) != len(records):
         raise ValueError(f'Invalid EPS broker rows: {len(records)}')
     return dict(month=expected_month, source=source, unit='NTD', basis='cumulative-period',
-                formula='netIncomeThousands * 1000 / (capitalThousands * 100)',
+                formula=f'netIncomeThousands * 1000 / (capitalThousands * 1000 / {PAR_VALUE})',
+                assumedParValue=PAR_VALUE,
                 preferredDividendsAvailable=False, rows=records)
 
 def catalog(year):
+    """Return {YYYY-MM: download_url} for the integrated financial reports of the given year.
+
+    The TWSE download JSON structure has historically placed the integrated
+    broker financials row at index 3. We search by title keywords so a
+    future reordering of rows does not silently break the pipeline.
+    """
     url = f'https://www.twse.com.tw/rwd/zh/statistics/download?type=03&date={year}0101&response=json'
-    data = json.loads(fetch(url))['data']
-    if len(data) < 4:
-        raise ValueError(f'No integrated financial report catalog for {year}')
-    row = data[3]
+    payload = json.loads(fetch(url))
+    data = payload.get('data') or []
+    if not data:
+        raise ValueError(f'No integrated financial report catalog for {year} (empty data)')
+    row = None
+    for candidate in data:
+        title = compact(candidate[0] if candidate else '')
+        if '綜合證券商財務資料' in title or '綜合證券商' in title:
+            row = candidate
+            break
+    if row is None and len(data) > 3:
+        # Fallback to historical index while still logging the structure risk.
+        row = data[3]
+    if row is None or len(row) < 2:
+        raise ValueError(f'No integrated financial report catalog for {year} (row not found)')
     return {f'{year}-{month:02d}': urllib.parse.urljoin('https://www.twse.com.tw', link)
             for month, link in enumerate(row[1:13], 1) if link}
 
@@ -128,8 +162,15 @@ def main():
             path = EPS_DIR / f'{month}.json'
             if path.exists() and not args.refresh:
                 continue
-            blob = fetch(url)
-            report = parse(blob, month, url)
+            try:
+                blob = fetch(url)
+                report = parse(blob, month, url)
+            except Exception as error:
+                # Keep the previous published data; surface the problem clearly
+                # so the workflow log / operator can investigate without
+                # publishing incomplete or wrong-month figures.
+                print(f'WARNING: skipped {month} EPS — {error}', flush=True)
+                continue
             report['sha256'] = hashlib.sha256(blob).hexdigest()
             save(path, report)
             changed = True
