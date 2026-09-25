@@ -1,4 +1,4 @@
-import{aggregate,growthRate,monthlyEntities,monthRange,marketsFor,positiveBaseGrowthRate,shiftMonth}from'./engine.js?v=compare-1';
+import{aggregate,growthRate,monthlyEntities,monthRange,marketsFor,positiveBaseGrowthRate,shiftMonth}from'./engine.js?v=benchmark-1';
 const $=s=>document.querySelector(s),esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt=(x,d=2)=>x.toLocaleString('zh-TW',{minimumFractionDigits:d,maximumFractionDigits:d});
 const pct=x=>`${fmt(x,3)}%`,money=x=>x>=1e12?`${fmt(x/1e12)} 兆`:`${fmt(x/1e8)} 億`;
@@ -56,7 +56,7 @@ function trendEntity(){
  return r&&{code:r.code,name:r.name,kind:r.kind,parent,label:`${r.name}・${kindName[r.kind]}`};
 }
 function renderTrendPicker(){
- $('#trend-picker').hidden=!['trend','growth'].includes(mode);$('#bar-metrics').hidden=mode!=='bars';$('#trend-frequency').hidden=mode!=='trend';$('#growth-metrics').hidden=mode!=='growth';
+ $('#trend-picker').hidden=false;$('#bar-metrics').hidden=mode!=='bars';$('#trend-frequency').hidden=mode!=='trend';$('#growth-metrics').hidden=mode!=='growth';
  $('#trend-chips').innerHTML=trendSelections.length?trendSelections.map((r,i)=>`<button type="button" data-remove="${i}" title="移除 ${esc(r.label)}"><i style="--color:${trendColors[i]}"></i>${esc(r.label)} ×</button>`).join(''):'<span>尚未手動加入；目前依畫面條件顯示預設曲線。</span>';
  $('#trend-add').disabled=trendSelections.length>=10||!$('#trend-broker').value;
 }
@@ -125,6 +125,14 @@ function growthAmount(def,month){
  const row=result.rows.find(row=>row.code===def.code);
  return row&&required.every(name=>row.seen[name].has(month))?row.amount:null;
 }
+function growthSummary(def){
+ const latest=range.at(-1),current=growthAmount(def,latest),mom=growthRate(current,growthAmount(def,shiftMonth(latest,-1))),yoy=growthRate(current,growthAmount(def,shiftMonth(latest,-12))),currentValues=range.map(month=>growthAmount(def,month)),priorValues=range.map(month=>growthAmount(def,shiftMonth(month,-12))),currentPeriod=currentValues.some(value=>value==null)?null:currentValues.reduce((sum,value)=>sum+value,0),priorPeriod=priorValues.some(value=>value==null)?null:priorValues.reduce((sum,value)=>sum+value,0);return{current,mom,yoy,currentPeriod,priorPeriod,period:growthRate(currentPeriod,priorPeriod)};
+}
+function relativeGrowth(value,benchmark){
+ if(value==null||benchmark==null)return'<span>無法比較</span>';
+ const difference=value-benchmark;if(Math.abs(difference)<.005)return'<span>與市場持平</span>';
+ return`<span class="${difference>0?'positive':'negative'}">${difference>0?'領先':'落後'} ${fmt(Math.abs(difference),2)} 個百分點</span>`;
+}
 function renderGrowth(){
  const definitions=growthDefinitions();
  if(!definitions.length){$('#chart').innerHTML='<div class="empty">所選期間沒有可比較的成交金額資料。</div>';return;}
@@ -149,20 +157,21 @@ function renderGrowth(){
  range.forEach((month,i)=>{if(i%Math.max(1,Math.ceil(range.length/8))===0||i===range.length-1)svg+=`<text x="${x(i)}" y="293" text-anchor="middle">${month}</text>`;});
  series.forEach(item=>{let path='',active=false;item.values.forEach((value,i)=>{if(value==null){active=false;return;}path+=`${active?'L':'M'}${x(i)} ${y(value)} `;active=true;svg+=`<circle cx="${x(i)}" cy="${y(value)}" r="3" fill="${value>=0?'#c44747':'#087c67'}"><title>${range[i]} ${esc(item.def.label)} ${growthLabel(value)}</title></circle>`;});svg+=`<path d="${path}" fill="none" stroke="${item.def.color}" stroke-width="${item.def.isMarket?3:2.3}" ${item.def.isMarket?'stroke-dasharray="8 4"':''}/>`;});
  svg+='</svg>';
- const latest=range.at(-1),periodMonths=range,summary=definitions.map((def,index)=>{const amounts=amountMaps[index],current=amounts.get(latest),mom=growthRate(current,amounts.get(shiftMonth(latest,-1))),yoy=growthRate(current,amounts.get(shiftMonth(latest,-12))),currentValues=periodMonths.map(month=>amounts.get(month)),priorValues=periodMonths.map(month=>amounts.get(shiftMonth(month,-12))),currentPeriod=currentValues.some(value=>value==null)?null:currentValues.reduce((sum,value)=>sum+value,0),priorPeriod=priorValues.some(value=>value==null)?null:priorValues.reduce((sum,value)=>sum+value,0);return{def,current,mom,yoy,currentPeriod,priorPeriod,period:growthRate(currentPeriod,priorPeriod)};});
+ const latest=range.at(-1),summary=definitions.map(def=>({def,...growthSummary(def)})),benchmark=summary.find(row=>row.def.isMarket&&row.def.targetMarket===market)||summary.find(row=>row.def.isMarket);
  const rateCell=value=>`<td class="${value==null?'':value>0?'positive':value<0?'negative':''}">${growthLabel(value)}</td>`;
- $('#chart').innerHTML=svg+`<div class="trend-key">${definitions.map(def=>`<span><i style="--color:${def.color};${def.isMarket?'border-top:2px dashed '+def.color+';background:none;height:1px':''}"></i>${esc(def.label)}</span>`).join('')}</div><div class="table-wrap growth-table"><table><thead><tr><th>比較對象</th><th>${latest} 成交金額</th><th>月增率</th><th>年增率</th><th>所選區間成交金額</th><th>去年同期成交金額</th><th>同期增長率</th></tr></thead><tbody>${summary.map(row=>`<tr><td>${esc(row.def.label)}</td><td>${row.current==null?'未列示':money(row.current)}</td>${rateCell(row.mom)}${rateCell(row.yoy)}<td>${row.currentPeriod==null?'未列示':money(row.currentPeriod)}</td><td>${row.priorPeriod==null?'未列示':money(row.priorPeriod)}</td>${rateCell(row.period)}</tr>`).join('')}</tbody></table></div>`;
+ const relative=row=>row.def.isMarket?'<span>市場基準</span>':`<span>月：${relativeGrowth(row.mom,benchmark?.mom)}</span><span>年：${relativeGrowth(row.yoy,benchmark?.yoy)}</span><span>同期：${relativeGrowth(row.period,benchmark?.period)}</span>`;
+ $('#chart').innerHTML=svg+`<div class="trend-key">${definitions.map(def=>`<span><i style="--color:${def.color};${def.isMarket?'border-top:2px dashed '+def.color+';background:none;height:1px':''}"></i>${esc(def.label)}</span>`).join('')}</div><div class="table-wrap growth-table"><table><thead><tr><th>比較對象</th><th>${latest} 成交金額</th><th>月增率</th><th>年增率</th><th>所選區間成交金額</th><th>去年同期成交金額</th><th>同期增長率</th><th>相對所選市場</th></tr></thead><tbody>${summary.map(row=>`<tr><td>${esc(row.def.label)}</td><td>${row.current==null?'未列示':money(row.current)}</td>${rateCell(row.mom)}${rateCell(row.yoy)}<td>${row.currentPeriod==null?'未列示':money(row.currentPeriod)}</td><td>${row.priorPeriod==null?'未列示':money(row.priorPeriod)}</td>${rateCell(row.period)}<td class="relative-market">${relative(row)}</td></tr>`).join('')}</tbody></table></div>`;
 }
 function renderTable(){
  const query=$('#search').value.trim().toLocaleLowerCase(),b=$('#broker').value;
  let items=viewRows.map((r,i)=>({...r,rank:i+1,sortRank:i+1}));
  if(b&&!$('#branch').value){const group=groupRows.find(r=>r.code===b);if(group)items.unshift({...group,rank:'合計',sortRank:0});}
  items=items.filter(r=>`${r.code} ${r.name} ${[...r.names].join(' ')}`.toLocaleLowerCase().includes(query));
- const metrics=row=>{const def={...row,targetMarket:market,parent:row.kind==='group'?'':b},latest=range.at(-1),current=growthAmount(def,latest),mom=growthRate(current,growthAmount(def,shiftMonth(latest,-1))),yoy=growthRate(current,growthAmount(def,shiftMonth(latest,-12))),currentValues=range.map(month=>growthAmount(def,month)),priorValues=range.map(month=>growthAmount(def,shiftMonth(month,-12))),currentPeriod=currentValues.some(value=>value==null)?null:currentValues.reduce((sum,value)=>sum+value,0),priorPeriod=priorValues.some(value=>value==null)?null:priorValues.reduce((sum,value)=>sum+value,0);return{mom,yoy,period:growthRate(currentPeriod,priorPeriod)};};
+ const benchmark=growthSummary({isMarket:true,targetMarket:market}),metrics=row=>growthSummary({...row,targetMarket:market,parent:row.kind==='group'?'':b});
  items=sortedRows(items.map(r=>{const growth=metrics(r);return{...r,...growth,rankValue:r.sortRank,twseSort:r.seen.twse.size?r.twse:null,tpexSort:r.seen.tpex.size?r.tpex:null};}),{...marketSort,key:marketSort.key==='rank'?'rankValue':marketSort.key==='twse'?'twseSort':marketSort.key==='tpex'?'tpexSort':marketSort.key});
  updateSortHeaders('#market-thead',marketSort,'data-market-sort');
- $('#tbody').innerHTML=items.length?items.map(r=>{const cell=value=>`<td class="growth-rate ${value==null?'':value>0?'positive':value<0?'negative':''}">${growthLabel(value)}</td>`;return`<tr><td>${r.rank}</td><td><button data-code="${esc(r.code)}">${esc(r.name)}</button><small title="${esc([...r.names].join('、'))}">${esc(r.code)} · ${kindName[r.kind]}${r.names.size>1?' · 來源名稱有差異':''}</small></td><td>${market==='tpex'?'—':r.seen.twse.size?fmt(r.twse/1e8):'未列示'}</td><td>${market==='twse'?'—':r.seen.tpex.size?fmt(r.tpex/1e8):'未列示'}</td><td>${pct(r.share)}${isComplete(r)?'':' *'}</td>${cell(r.mom)}${cell(r.yoy)}${cell(r.period)}<td>${availability(r)}</td></tr>`;}).join(''):'<tr><td colspan="9" class="empty">沒有符合條件的資料</td></tr>';
- $('#table-note').textContent=`共 ${items.length} 筆。* 表示部分月份或市場未列示；百分比僅以已列示成交金額除以完整區間市場金額，不能視為完整期間市占率。月增率、年增率與同期增長率分別依前月、去年同月及去年同期成交金額計算；基期為零或未列示時顯示未列示。名稱採所選期間最新報表。`;
+ $('#tbody').innerHTML=items.length?items.map(r=>{const cell=(value,marketValue)=>`<td class="growth-rate benchmark-cell ${value==null?'':value>0?'positive':value<0?'negative':''}"><strong>${growthLabel(value)}</strong><small>市場 ${growthLabel(marketValue)} · ${relativeGrowth(value,marketValue)}</small></td>`;return`<tr><td>${r.rank}</td><td><button data-code="${esc(r.code)}">${esc(r.name)}</button><small title="${esc([...r.names].join('、'))}">${esc(r.code)} · ${kindName[r.kind]}${r.names.size>1?' · 來源名稱有差異':''}</small></td><td>${market==='tpex'?'—':r.seen.twse.size?fmt(r.twse/1e8):'未列示'}</td><td>${market==='twse'?'—':r.seen.tpex.size?fmt(r.tpex/1e8):'未列示'}</td><td>${pct(r.share)}${isComplete(r)?'':' *'}</td>${cell(r.mom,benchmark.mom)}${cell(r.yoy,benchmark.yoy)}${cell(r.period,benchmark.period)}<td>${availability(r)}</td></tr>`;}).join(''):'<tr><td colspan="9" class="empty">沒有符合條件的資料</td></tr>';
+ $('#table-note').textContent=`共 ${items.length} 筆。* 表示部分月份或市場未列示；百分比僅以已列示成交金額除以完整區間市場金額，不能視為完整期間市占率。每個成長率欄位同時列出所選市場數值及券商領先／落後市場的百分點；基期為零或未列示時顯示未列示。名稱採所選期間最新報表。`;
 }
 function renderClosures(b){
  const rows=closures.filter(r=>r.code===b.replace('*','0'));
@@ -204,10 +213,10 @@ function epsAllChart(rows,months){
  if(epsAllMetric==='annual'){
   const years=[...new Set(months.map(month=>month.slice(0,4)))],yearEnds=years.map(year=>months.filter(month=>month.startsWith(year)).at(-1));
   const series=leaders.map((row,index)=>({name:row.name,color:trendColors[index%trendColors.length],values:yearEnds.map(month=>{const value=epsValue(row.code,month,'estimatedEps');return value==null?null:{value,title:`${month} ${row.name} 年度累計 EPS`};})}));
-  return epsChart(series,years,`${scope}逐年累計 EPS 曲線`,'元',true);
+  return epsChart(series,years,`${scope}逐年累計 EPS 曲線`,'元');
  }
  const series=leaders.map((row,index)=>({name:row.name,color:trendColors[index%trendColors.length],values:months.map((month,i)=>{const currentMonths=months.slice(0,i+1);let value;if(epsAllMetric==='monthly')value=epsValue(row.code,month);else if(epsAllMetric==='mom')value=epsGrowthRate(epsValue(row.code,month),epsValue(row.code,shiftMonth(month,-1)));else{const cumulative=epsPeriodValue(row.code,currentMonths);value=epsAllMetric==='cumulative'?cumulative:epsGrowthRate(cumulative,epsPeriodValue(row.code,currentMonths.map(item=>shiftMonth(item,-12))));}return value==null?null:{value,title:`${month} ${row.name} ${metricNames[epsAllMetric]}`};})}));
- return epsChart(series,months,`${scope}${metricNames[epsAllMetric]}曲線`,percent?'%':'元',true);
+ return epsChart(series,months,`${scope}${metricNames[epsAllMetric]}曲線`,percent?'%':'元',percent);
 }
 function renderAllEps(reports){
  const months=reports.map(report=>report.month),latest=months.at(-1),catalog=new Map(epsManifest.brokers.map(row=>[row.code,row.name]));
@@ -219,7 +228,7 @@ function renderAllEps(reports){
  $('#eps-thead').innerHTML=`<tr>${sortableHead('排名','rank')}${sortableHead('券商','name')}${sortableHead('最新月份 EPS（元）','current')}${sortableHead('月增率','mom')}${sortableHead('年增率','yoy')}${sortableHead('區間 EPS（元）','period')}${sortableHead('去年同期 EPS（元）','prior')}${sortableHead('同期比率','periodRate')}${sortableHead('資料月份','listed')}</tr>`;
  updateSortHeaders('#eps-thead',epsSort,'data-eps-sort');
  const rate=value=>`<td class="growth-rate ${value==null?'':value>0?'positive':value<0?'negative':''}">${growthLabel(value)}</td>`;
- $('#eps-tbody').innerHTML=rows.map(row=>`<tr><td>${row.rank}</td><td><button data-eps-code="${esc(row.code)}">${esc(row.name)}</button><small>${esc(row.code)}</small></td><td class="signed-value ${row.current==null?'':row.current>0?'positive':row.current<0?'negative':''}">${row.current==null?'未列示':fmt(row.current,3)}</td>${rate(row.mom)}${rate(row.yoy)}<td class="signed-value ${row.period==null?'':row.period>0?'positive':row.period<0?'negative':''}">${row.period==null?'未列示':fmt(row.period,3)}</td><td class="signed-value ${row.prior==null?'':row.prior>0?'positive':row.prior<0?'negative':''}">${row.prior==null?'未列示':fmt(row.prior,3)}</td>${rate(row.periodRate)}<td>${row.listed}/${months.length}</td></tr>`).join('');
+ $('#eps-tbody').innerHTML=rows.map(row=>`<tr><td>${row.rank}</td><td><button data-eps-code="${esc(row.code)}">${esc(row.name)}</button><small>${esc(row.code)}</small></td><td>${row.current==null?'未列示':fmt(row.current,3)}</td>${rate(row.mom)}${rate(row.yoy)}<td>${row.period==null?'未列示':fmt(row.period,3)}</td><td>${row.prior==null?'未列示':fmt(row.prior,3)}</td>${rate(row.periodRate)}<td>${row.listed}/${months.length}</td></tr>`).join('');
 }
 function renderEps(reports){
  $('.eps-broker-control').hidden=epsMode==='all';
@@ -264,7 +273,7 @@ async function queryEps(){
   if(ticket===epsVersion){epsComparisonReports=loaded.sort((a,b)=>a.month.localeCompare(b.month));renderEps(epsComparisonReports.filter(report=>months.includes(report.month)));}
  }catch(error){if(ticket===epsVersion){$('#eps-status').textContent=error.message;$('#eps-status').className='eps-status error';$('#eps-chart').innerHTML='';$('#eps-tbody').innerHTML='';}}
 }
-function epsRow(r,month,metrics){const rate=value=>`<td class="growth-rate ${value==null?'':value>0?'positive':value<0?'negative':''}">${growthLabel(value)}</td>`,signed=(value,digits)=>`<td class="signed-value ${value>0?'positive':value<0?'negative':''}">${fmt(value,digits)}</td>`;return`<tr><td><button data-eps-code="${esc(r.code)}">${esc(r.name)}</button><small>${esc(r.code)}</small></td><td>${month}</td>${signed(r.monthlyNetIncomeThousands,0)}${signed(r.monthlyEstimatedEps,3)}${rate(metrics.mom)}${rate(metrics.yoy)}${rate(metrics.periodRate)}${signed(r.netIncomeThousands,0)}${signed(r.estimatedEps,3)}<td>${fmt(r.capitalThousands,0)}</td><td>${fmt(r.estimatedShares,0)}</td></tr>`;}
+function epsRow(r,month,metrics){const rate=value=>`<td class="growth-rate ${value==null?'':value>0?'positive':value<0?'negative':''}">${growthLabel(value)}</td>`,number=(value,digits)=>`<td>${fmt(value,digits)}</td>`;return`<tr><td><button data-eps-code="${esc(r.code)}">${esc(r.name)}</button><small>${esc(r.code)}</small></td><td>${month}</td>${number(r.monthlyNetIncomeThousands,0)}${number(r.monthlyEstimatedEps,3)}${rate(metrics.mom)}${rate(metrics.yoy)}${rate(metrics.periodRate)}${number(r.netIncomeThousands,0)}${number(r.estimatedEps,3)}<td>${fmt(r.capitalThousands,0)}</td><td>${fmt(r.estimatedShares,0)}</td></tr>`;}
 function choose(code){if(code.endsWith('*')){$('#broker').value=code;$('#branch').value='';updateBranches();}else{$('#branch').value=code;}render();}
 $('#chart').addEventListener('click',e=>{const b=e.target.closest('[data-code]');if(b)choose(b.dataset.code);});
 $('#tbody').addEventListener('click',e=>{const b=e.target.closest('[data-code]');if(b)choose(b.dataset.code);});
@@ -275,7 +284,7 @@ $('#trend-frequency').addEventListener('click',e=>{const b=e.target.closest('[da
 $('#growth-metrics').addEventListener('click',e=>{const b=e.target.closest('[data-growth]');if(!b)return;growthMetric=b.dataset.growth;$('#growth-metrics').querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x===b));if(reports.length)render();});
 $('#trend-broker').addEventListener('change',()=>{updateTrendBranches();renderTrendPicker();});
 $('#trend-branch').addEventListener('change',renderTrendPicker);
-$('#trend-add').addEventListener('click',()=>{const entity=trendEntity();if(!entity||trendSelections.length>=10||trendSelections.some(r=>r.code===entity.code&&r.kind===entity.kind&&r.parent===entity.parent))return;trendSelections.push(entity);render();});
+$('#trend-add').addEventListener('click',()=>{const entity=trendEntity();if(!entity||trendSelections.length>=10||trendSelections.some(r=>r.code===entity.code&&r.kind===entity.kind&&r.parent===entity.parent))return;trendSelections.push(entity);if(mode==='bars'){mode='trend';$('#chart-modes').querySelectorAll('button').forEach(button=>button.setAttribute('aria-pressed',button.dataset.mode===mode));}render();});
 $('#trend-chips').addEventListener('click',e=>{const b=e.target.closest('[data-remove]');if(!b)return;trendSelections.splice(Number(b.dataset.remove),1);render();});
 $('#broker').addEventListener('change',()=>{$('#branch').value='';updateBranches();render();});
 $('#branch').addEventListener('change',render);$('#search').addEventListener('input',renderTable);
