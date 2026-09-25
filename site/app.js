@@ -1,4 +1,4 @@
-import{aggregate,growthRate,monthlyEntities,monthRange,marketsFor,positiveBaseGrowthRate,shiftMonth}from'./engine.js?v=eps-growth-2';
+import{aggregate,growthRate,monthlyEntities,monthRange,marketsFor,positiveBaseGrowthRate,shiftMonth}from'./engine.js?v=eps-growth-3';
 const $=s=>document.querySelector(s),esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt=(x,d=2)=>x.toLocaleString('zh-TW',{minimumFractionDigits:d,maximumFractionDigits:d});
 const pct=x=>`${fmt(x,3)}%`,money=x=>x>=1e12?`${fmt(x/1e12)} 兆`:`${fmt(x/1e8)} 億`;
@@ -192,14 +192,19 @@ function epsMetrics(code,months){
  return{current,mom:epsGrowthRate(current,epsValue(code,shiftMonth(latest,-1))),yoy:epsGrowthRate(current,epsValue(code,shiftMonth(latest,-12))),period,prior,periodRate:epsGrowthRate(period,prior)};
 }
 function epsAllChart(rows,months){
- const leaders=rows.filter(row=>row.period!=null).slice().sort((a,b)=>b.period-a.period).slice(0,10),metricNames={mom:'月增率','cumulative-growth':'累計 EPS 成長率',cumulative:'累計 EPS'},percent=epsAllMetric!=='cumulative';
+ const leaders=rows.filter(row=>row.period!=null).slice().sort((a,b)=>b.period-a.period).slice(0,10),metricNames={mom:'月增率','cumulative-growth':'累計 EPS 成長率',cumulative:'累計 EPS',annual:'逐年 EPS'},percent=!['cumulative','annual'].includes(epsAllMetric);
+ if(epsAllMetric==='annual'){
+  const years=[...new Set(months.map(month=>month.slice(0,4)))],yearEnds=years.map(year=>months.filter(month=>month.startsWith(year)).at(-1));
+  const series=leaders.map((row,index)=>({name:row.name,color:trendColors[index%trendColors.length],values:yearEnds.map(month=>{const value=epsValue(row.code,month,'estimatedEps');return value==null?null:{value,title:`${month} ${row.name} 年度累計 EPS`};})}));
+  return epsChart(series,years,'區間 EPS 排名前十家券商逐年累計 EPS 曲線','元',true);
+ }
  const series=leaders.map((row,index)=>({name:row.name,color:trendColors[index%trendColors.length],values:months.map((month,i)=>{const currentMonths=months.slice(0,i+1);let value;if(epsAllMetric==='mom')value=epsGrowthRate(epsValue(row.code,month),epsValue(row.code,shiftMonth(month,-1)));else{const cumulative=epsPeriodValue(row.code,currentMonths);value=epsAllMetric==='cumulative'?cumulative:epsGrowthRate(cumulative,epsPeriodValue(row.code,currentMonths.map(item=>shiftMonth(item,-12))));}return value==null?null:{value,title:`${month} ${row.name} ${metricNames[epsAllMetric]}`};})}));
  return epsChart(series,months,`區間 EPS 排名前十家券商${metricNames[epsAllMetric]}曲線`,percent?'%':'元',true);
 }
 function renderAllEps(reports){
  const months=reports.map(report=>report.month),latest=months.at(-1),catalog=new Map(epsManifest.brokers.map(row=>[row.code,row.name]));
  const baseRows=[...catalog].map(([code,catalogName])=>{const listed=reports.flatMap(report=>report.rows.map(row=>({...row,month:report.month}))).filter(row=>row.code===code),last=listed.at(-1),metrics=epsMetrics(code,months);return{code,name:last?.name||catalogName,listed:listed.length,...metrics};}),chartRows=baseRows.slice().sort((a,b)=>(b.period??-Infinity)-(a.period??-Infinity)||a.code.localeCompare(b.code)),ranks=new Map(chartRows.map((row,index)=>[row.code,index+1])),rows=sortedRows(baseRows.map(row=>({...row,rank:ranks.get(row.code)})),epsSort);
- const metricName={mom:'月增率','cumulative-growth':'累計 EPS 成長率',cumulative:'累計 EPS'}[epsAllMetric];
+ const metricName={mom:'月增率','cumulative-growth':'累計 EPS 成長率',cumulative:'累計 EPS',annual:'逐年 EPS'}[epsAllMetric];
  $('#eps-title').textContent=`所選區間全部券商・${metricName}`;
  $('#eps-chart').innerHTML=epsAllChart(chartRows,months);
  $('#eps-status').textContent=`${months[0]} — ${latest} · ${rows.length} 家券商 · 曲線顯示區間 EPS 排名前十家`;
