@@ -15,6 +15,12 @@ export function monthRange(start,end){
  if(m<1||m>12||Number(end.slice(5))<1||Number(end.slice(5))>12)throw Error('月份格式不正確。');
  while(`${y}-${String(m).padStart(2,'0')}`<=end){out.push(`${y}-${String(m).padStart(2,'0')}`);if(++m===13){m=1;y++;}if(out.length>1500)throw Error('時間範圍過長。');}return out;
 }
+export function resolveAvailableMonths(requested,available){
+ const published=[...new Set(available)].sort(),set=new Set(published),missing=requested.filter(month=>!set.has(month));
+ let months=requested.filter(month=>set.has(month)),fallback=null;
+ if(!months.length&&published.length){fallback=published.filter(month=>month<=requested.at(-1)).at(-1)||published.at(-1);months=[fallback];}
+ return{months,missing,fallback};
+}
 export function aggregate(reports,market,kind='group',parent=''){
  const selected=reports.filter(r=>marketsFor(market).includes(r.market));
  const totals={twse:0,tpex:0};const map=new Map();

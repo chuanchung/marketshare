@@ -119,18 +119,30 @@ def main():
     changed = False
     for year in range(int(args.start[:4]), int(args.end[:4]) + 1):
         selected = [f'{year}-{m:02d}' for m in range(1, 13) if args.start <= f'{year}-{m:02d}' <= args.end]
-        if selected and all((EPS_DIR / f'{m}.json').exists() for m in selected) and not args.refresh:
+        # Historical files are immutable locally. Keep checking only the latest
+        # catalog year because the newest workbook can gain additional brokers.
+        if selected and all((EPS_DIR / f'{m}.json').exists() for m in selected) and not args.refresh and year < int(args.end[:4]):
             continue
         available = catalog(year)
+        latest_available = max((month for month in available if month <= args.end), default=None)
         for month, url in sorted(available.items()):
             if not args.start <= month <= args.end:
                 continue
             path = EPS_DIR / f'{month}.json'
-            if path.exists() and not args.refresh:
+            if path.exists() and not args.refresh and month != latest_available:
                 continue
             blob = fetch(url)
+            digest = hashlib.sha256(blob).hexdigest()
+            previous = json.loads(path.read_text(encoding='utf-8')) if path.exists() else None
+            if previous and previous.get('sha256') == digest:
+                continue
             report = parse(blob, month, url)
-            report['sha256'] = hashlib.sha256(blob).hexdigest()
+            # A temporarily truncated official workbook must not replace a more
+            # complete verified copy. Equal row counts may still contain fixes.
+            if previous and len(report['rows']) < len(previous.get('rows', [])):
+                print(f'{month} EPS: retained {len(previous["rows"])} brokers; newest file has {len(report["rows"])}', flush=True)
+                continue
+            report['sha256'] = digest
             save(path, report)
             changed = True
             print(f'{month} EPS: {len(report["rows"])} brokers', flush=True)
