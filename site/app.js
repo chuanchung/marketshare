@@ -1,12 +1,14 @@
-import{aggregate,growthRate,monthlyEntities,monthRange,marketsFor,positiveBaseGrowthRate,resolveAvailableMonths,shiftMonth}from'./engine.js?v=presets-1';
-import{PUBLIC_BANKS,brokerCodesInCity,officeCodesInCity,topBrokerCodes,turnoverLeaders}from'./presets.js?v=presets-1';
+import{aggregate,growthRate,monthlyEntities,monthRange,marketsFor,positiveBaseGrowthRate,resolveAvailableMonths,shiftMonth}from'./engine.js?v=presets-2';
+import{PUBLIC_BANKS,brokerCodesInCity,officeCodesInCity,topBrokerCodes,turnoverLeaders}from'./presets.js?v=presets-2';
 const $=s=>document.querySelector(s),esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt=(x,d=2)=>x.toLocaleString('zh-TW',{minimumFractionDigits:d,maximumFractionDigits:d});
 const pct=x=>`${fmt(x,3)}%`,money=x=>x>=1e12?`${fmt(x/1e12)} 兆`:`${fmt(x/1e8)} 億`;
 const kindName={group:'經紀合計',head:'總公司營業單位',branch:'分公司'};
-let manifest,epsManifest,officeDirectory,officeIndex=new Map(),turnoverData,closures=[],reports=[],comparisonReports=[],epsComparisonReports=[],market='both',mode='bars',barMetric='share',growthMetric='mom',trendFrequency='month',epsMode='all',epsAllMetric='cumulative',marketPreset='all',epsPreset='all',marketSort={key:'rank',dir:'asc'},epsSort={key:'period',dir:'desc'},version=0,epsVersion=0,range=[],viewRows=[],groupRows=[],allGroupRows=[],total=0,trendSelections=[],epsSelections=[];
+let manifest,epsManifest,officeDirectory,officeIndex=new Map(),turnoverData,closures=[],reports=[],comparisonReports=[],epsComparisonReports=[],epsRowIndex=new Map(),market='both',mode='bars',barMetric='share',growthMetric='mom',trendFrequency='month',epsMode='all',epsAllMetric='cumulative',marketPreset='all',epsPreset='all',marketPresetChart=false,epsPresetChart=false,marketSort={key:'rank',dir:'asc'},epsSort={key:'period',dir:'desc'},version=0,epsVersion=0,range=[],viewRows=[],groupRows=[],allGroupRows=[],total=0,trendSelections=[],epsSelections=[];
 const trendColors=['#157c9c','#dc982d','#5b64a0','#2b9d87','#9c567d','#805ad5','#d65f5f','#4c78a8','#72a33b','#8c6d5c'];
+const seriesColor=index=>trendColors[index]||`hsl(${Math.round(index*137.508%360)} 58% 43%)`;
 const trendHidden=new Set(),growthHidden=new Set(),epsHidden=new Set();
+const growthAggregateCache=new Map();
 const cache=new Map();
 const epsCache=new Map();
 async function json(path){const r=await fetch(path,{cache:'no-cache'});if(!r.ok)throw Error(`資料讀取失敗（${r.status}），請重新整理後再試。`);return r.json();}
@@ -72,7 +74,7 @@ async function query(){
   let loaded=[];
   for(let i=0;i<paths.length;i+=8){loaded.push(...await Promise.all(paths.slice(i,i+8).map(async p=>{if(!cache.has(p))cache.set(p,await json(p));return cache.get(p);})));if(ticket!==version)return;}
   if(ticket!==version)return;
-  comparisonReports=loaded.sort((a,b)=>a.month.localeCompare(b.month)||a.market.localeCompare(b.market));
+  comparisonReports=loaded.sort((a,b)=>a.month.localeCompare(b.month)||a.market.localeCompare(b.market));growthAggregateCache.clear();
   reports=comparisonReports.filter(report=>months.includes(report.month));range=months;
   allGroupRows=aggregate(reports,market).rows;applyMarketPreset();updateBranches();updateTrendBranches();render();$('#results').hidden=false;
   const notice=[fallback,missing.length?`${missing.join('、')} 尚未有完整${market==='both'?'雙市場':''}資料，未納入計算；缺值未以 0 代替`:'',manifest.errors?.length?'部分來源更新未成功，僅顯示已驗證資料':''].filter(Boolean).join(' · ');
@@ -102,7 +104,8 @@ function trendEntity(){
 }
 function renderTrendPicker(){
  $('#trend-picker').hidden=false;$('#bar-metrics').hidden=mode!=='bars';$('#trend-frequency').hidden=mode!=='trend';$('#growth-metrics').hidden=mode!=='growth';
- $('#trend-chips').innerHTML=trendSelections.length?trendSelections.map((r,i)=>`<button type="button" data-remove="${i}" title="移除 ${esc(r.label)}"><i style="--color:${trendColors[i]}"></i>${esc(r.label)} ×</button>`).join(''):'<span>尚未手動加入；目前依畫面條件顯示預設曲線。</span>';
+ const presetCount=marketPreset==='city'?viewRows.length:groupRows.length,presetButton=$('#market-preset-chart');presetButton.hidden=marketPreset==='all'||!presetCount;presetButton.textContent=marketPresetChart?'恢復預設曲線':`顯示此選項全部${marketPreset==='city'?'營業單位':'券商'}（${presetCount}）`;
+ $('#trend-chips').innerHTML=trendSelections.length?trendSelections.map((r,i)=>`<button type="button" data-remove="${i}" title="移除 ${esc(r.label)}"><i style="--color:${seriesColor(i)}"></i>${esc(r.label)} ×</button>`).join(''):`<span>${marketPresetChart?'已顯示快速選項中的全部曲線；可在圖例逐條關閉。':'尚未手動加入；目前依畫面條件顯示預設曲線。'}</span>`;
  $('#trend-add').disabled=trendSelections.length>=10||!$('#trend-broker').value||(marketPreset==='city'&&!$('#trend-branch').value);
 }
 function render(){
@@ -123,7 +126,7 @@ function render(){
  $('#count-note').textContent=b||marketPreset==='city'?'含總公司營業單位與分公司':'總公司經紀合計・不含自營';
  $('#period').textContent=`${range.length} 個月`;$('#period-note').textContent=`${range[0]} — ${range.at(-1)}`;
  $('#chart-title').textContent=mode==='bars'?(b?`${selectedName()} · 營業單位${barMetric==='share'?'市占':'成交金額'}`:`${marketPreset==='city'?'所選縣市營業單位':'券商'}${barMetric==='share'?'市占':'成交金額'}排行`):mode==='trend'?`券商與分公司${trendFrequency==='month'?'月度':'年度'}市占走勢`:'券商、分點與市場成交成長比較';
- $('#chart-note').textContent=mode==='bars'?`${b||marketPreset==='city'?'各營業單位':'各券商經紀合計'}${barMetric==='share'?'占全市場比例':'區間成交金額'} · ${viewRows.length>15?'顯示前 15 名':`依${barMetric==='share'?'市占率':'成交金額'}排序`}`:mode==='trend'?`逐${trendFrequency==='month'?'月':'年'}市占率比較 · 已選 ${trendSelections.length}/10 條手動曲線`:`${{mom:'前月比較',yoy:'去年同月比較',period:'所選區間累計與去年同期比較'}[growthMetric]} · 券商／分點與市場同圖比較`;
+ $('#chart-note').textContent=mode==='bars'?`${b||marketPreset==='city'?'各營業單位':'各券商經紀合計'}${barMetric==='share'?'占全市場比例':'區間成交金額'} · ${marketPresetChart?'顯示快速選項全部':viewRows.length>15?'顯示前 15 名':`依${barMetric==='share'?'市占率':'成交金額'}排序`}`:mode==='trend'?`逐${trendFrequency==='month'?'月':'年'}市占率比較 · ${marketPresetChart?`快速選項全部 ${marketPreset==='city'?viewRows.length:groupRows.length} 條曲線`:`已選 ${trendSelections.length}/10 條手動曲線`}`:`${{mom:'前月比較',yoy:'去年同月比較',period:'所選區間累計與去年同期比較'}[growthMetric]} · ${marketPresetChart?'快速選項全部券商／分點與市場同圖比較':'券商／分點與市場同圖比較'}`;
  renderTrendPicker();
  $('#legend').hidden=mode!=='bars';
  $('#legend').innerHTML=marketsFor(market).map(m=>`<span><i class="${m}"></i>${m==='twse'?'上市':'上櫃'}</span>`).join('');
@@ -133,42 +136,45 @@ function render(){
  $('#source-links').innerHTML=reports.map(r=>`<a href="${esc(r.source)}" target="_blank" rel="noopener">${r.month} · ${r.market==='twse'?'上市 ZIP':'上櫃 XLS'} ↗</a>`).join('');
 }
 function renderBars(){
- const rows=viewRows.slice(0,15),value=r=>barMetric==='share'?r.share:r.amount/1e8,twse=r=>barMetric==='share'?r.twseShare:r.twse/1e8,tpex=r=>barMetric==='share'?r.tpexShare:r.tpex/1e8,max=Math.max(.001,...rows.map(value))*1.08;
+ const rows=marketPresetChart?viewRows:viewRows.slice(0,15),value=r=>barMetric==='share'?r.share:r.amount/1e8,twse=r=>barMetric==='share'?r.twseShare:r.twse/1e8,tpex=r=>barMetric==='share'?r.tpexShare:r.tpex/1e8,max=Math.max(.001,...rows.map(value))*1.08;
  if(!rows.length){$('#chart').innerHTML='<div class="empty">所選期間沒有這家券商的營業單位資料。</div>';return;}
  $('#chart').innerHTML=rows.map((r,i)=>`<div class="bar-row"><span class="bar-rank">${String(i+1).padStart(2,'0')}</span><button class="bar-name" data-code="${esc(r.code)}" title="${esc(r.name)} · ${esc(r.code)}">${esc(r.name)}</button><div class="bar-track" role="img" aria-label="${esc(r.name)}：${barMetric==='share'?pct(r.share):fmt(value(r))+' 億'}"><span class="twse" style="width:${twse(r)/max*100}%" title="上市 ${barMetric==='share'?pct(r.twseShare):fmt(r.twse/1e8)+' 億'}"></span><span class="tpex" style="width:${tpex(r)/max*100}%" title="上櫃 ${barMetric==='share'?pct(r.tpexShare):fmt(r.tpex/1e8)+' 億'}"></span></div><span class="bar-value">${barMetric==='share'?pct(r.share):fmt(value(r))+' 億'}${isComplete(r)?'':' *'}</span></div>`).join('')+`<div class="axis">${[0,.25,.5,.75,1].map(v=>`<span>${fmt(max*v,max<1?3:1)}${barMetric==='share'?'%':' 億'}</span>`).join('')}</div>`;
 }
+function presetMarketEntities(){return marketPreset==='city'?viewRows.map(r=>({...r,label:`${r.name}・${kindName[r.kind]}`})):groupRows.map(r=>({...r,parent:'',label:`${r.name}・經紀合計`}));}
 function renderTrend(){
  const b=$('#broker').value,branch=$('#branch').value;
  const fallback=marketPreset==='city'?viewRows.slice(0,15).map(r=>({...r,label:`${r.name}・${kindName[r.kind]}`})):b?(branch?viewRows.map(r=>({...r,parent:b,label:`${r.name}・${kindName[r.kind]}`})):groupRows.filter(r=>r.code===b).map(r=>({...r,parent:'',label:`${r.name}・經紀合計`}))):groupRows.slice(0,marketPreset==='all'?5:15).map(r=>({...r,parent:'',label:`${r.name}・經紀合計`}));
- const series=trendSelections.length?trendSelections:fallback;
+ const series=marketPresetChart?presetMarketEntities():trendSelections.length?trendSelections:fallback;
  if(!series.length){$('#chart').innerHTML='<div class="empty">所選期間沒有可繪製的市占資料。</div>';return;}
  const keys=series.map(r=>`${r.kind}:${r.parent||''}:${r.code}`),visibleIndexes=keys.map((key,index)=>trendHidden.has(key)?-1:index).filter(index=>index>=0);
- const points=trendFrequency==='month'?monthlyEntities(reports,market,series).map(point=>({...point,label:point.month,months:[point.month]})):[...new Set(range.map(month=>month.slice(0,4)))].map(year=>{const months=range.filter(month=>month.startsWith(year)),yearReports=reports.filter(report=>report.month.startsWith(year));return{label:year,months,values:series.map(entity=>aggregate(yearReports,market,entity.kind==='group'?'group':'branch',entity.parent||'').rows.find(row=>row.code===entity.code)??null)};});
+ const points=trendFrequency==='month'?monthlyEntities(reports,market,series).map(point=>({...point,label:point.month,months:[point.month]})):[...new Set(range.map(month=>month.slice(0,4)))].map(year=>{const months=range.filter(month=>month.startsWith(year)),yearReports=reports.filter(report=>report.month.startsWith(year)),cache=new Map();return{label:year,months,values:series.map(entity=>{const kind=entity.kind==='group'?'group':'branch',parent=entity.parent||'',key=`${kind}:${parent}`;if(!cache.has(key))cache.set(key,new Map(aggregate(yearReports,market,kind,parent).rows.map(row=>[row.code,row])));return cache.get(key).get(entity.code)??null;})};});
  const complete=(row,point)=>row&&marketsFor(market).every(name=>point.months.every(month=>row.seen[name].has(month)));
- const colors=trendColors;
+ const colors=series.map((_,index)=>seriesColor(index));
  const max=Math.max(.01,...points.flatMap(p=>visibleIndexes.map(index=>p.values[index]?.share||0)))*1.15;
  const x=i=>65+i*900/Math.max(points.length-1,1),y=v=>265-v/max*230;
  const frequencyName=trendFrequency==='month'?'每月':'每年';
  let svg=`<svg class="trend-svg" viewBox="0 0 1000 310" role="img" aria-label="${frequencyName}市占率折線圖"><title>${frequencyName}市占率；完整數值在下方明細</title>`;
  for(let i=0;i<=4;i++){let v=max*i/4;svg+=`<line x1="65" x2="965" y1="${y(v)}" y2="${y(v)}" stroke="#e5ecf2"/><text x="52" y="${y(v)+4}" text-anchor="end">${fmt(v,1)}%</text>`;}
  points.forEach((p,i)=>{if(i%Math.max(1,Math.ceil(points.length/8))===0||i===points.length-1)svg+=`<text x="${x(i)}" y="293" text-anchor="middle">${p.label}</text>`;});
- visibleIndexes.forEach(j=>{const r=series[j],color=colors[j%colors.length];let path='',active=false;points.forEach((p,i)=>{const v=p.values[j];if(!complete(v,p)){active=false;return;}path+=`${active?'L':'M'}${x(i)} ${y(v.share)} `;active=true;svg+=`<circle cx="${x(i)}" cy="${y(v.share)}" r="3" fill="${color}"><title>${p.label} ${esc(r.name)} ${pct(v.share)}</title></circle>`;});svg+=`<path d="${path}" fill="none" stroke="${color}" stroke-width="2.5"/>`;});
+ visibleIndexes.forEach(j=>{const r=series[j],color=colors[j];let path='',active=false;points.forEach((p,i)=>{const v=p.values[j];if(!complete(v,p)){active=false;return;}path+=`${active?'L':'M'}${x(i)} ${y(v.share)} `;active=true;if(series.length<=20)svg+=`<circle cx="${x(i)}" cy="${y(v.share)}" r="3" fill="${color}"><title>${p.label} ${esc(r.name)} ${pct(v.share)}</title></circle>`;});svg+=`<path d="${path}" fill="none" stroke="${color}" stroke-width="2.5"/>`;});
  svg+='</svg>';
- $('#chart').innerHTML=svg+`<div class="trend-key line-switches">${series.map((r,i)=>lineSwitch('trend',keys[i],r.label||r.name,colors[i%colors.length],trendHidden)).join('')}</div><details><summary>${frequencyName}明細</summary><div class="table-wrap"><table><thead><tr><th>${trendFrequency==='month'?'月份':'年度'}</th>${series.map(r=>`<th>${esc(r.label||r.name)}</th>`).join('')}</tr></thead><tbody>${points.map(p=>`<tr><td>${p.label}</td>${p.values.map(r=>`<td>${complete(r,p)?pct(r.share):'未列示'}</td>`).join('')}</tr>`).join('')}</tbody></table></div></details>`;
+ $('#chart').innerHTML=svg+`<div class="trend-key line-switches">${series.map((r,i)=>lineSwitch('trend',keys[i],r.label||r.name,colors[i],trendHidden)).join('')}</div><details><summary>${frequencyName}明細</summary><div class="table-wrap"><table><thead><tr><th>${trendFrequency==='month'?'月份':'年度'}</th>${series.map(r=>`<th>${esc(r.label||r.name)}</th>`).join('')}</tr></thead><tbody>${points.map(p=>`<tr><td>${p.label}</td>${p.values.map(r=>`<td>${complete(r,p)?pct(r.share):'未列示'}</td>`).join('')}</tr>`).join('')}</tbody></table></div></details>`;
 }
 const growthLabel=value=>value==null?'未列示':`${value>0?'+':''}${fmt(value,2)}%`;
 function lineSwitch(type,key,label,color,hidden,dashed=false){const enabled=!hidden.has(key);return`<button type="button" class="line-toggle" data-line-type="${type}" data-line-key="${esc(key)}" aria-pressed="${enabled}"><b aria-hidden="true">${enabled?'✓':''}</b><i style="--color:${color};${dashed?'border-top:2px dashed '+color+';background:none;height:1px':''}"></i>${esc(label)}</button>`;}
 function growthDefinitions(){
  const b=$('#broker').value,branch=$('#branch').value;
  const fallback=marketPreset==='city'?viewRows.slice(0,15).map(r=>({...r,label:`${r.name}・${kindName[r.kind]}`})):b?(branch?viewRows.map(r=>({...r,parent:b,label:`${r.name}・${kindName[r.kind]}`})):groupRows.filter(r=>r.code===b).map(r=>({...r,parent:'',label:`${r.name}・經紀合計`}))):groupRows.slice(0,marketPreset==='all'?3:15).map(r=>({...r,parent:'',label:`${r.name}・經紀合計`}));
- const entities=trendSelections.length?trendSelections:fallback;
+ const entities=marketPresetChart?presetMarketEntities():trendSelections.length?trendSelections:fallback;
  const markets=market==='both'?[{targetMarket:'both',label:'上市＋上櫃市場',color:'#162f4b'},{targetMarket:'twse',label:'上市市場',color:'#157c9c'},{targetMarket:'tpex',label:'上櫃市場',color:'#dc982d'}]:[{targetMarket:market,label:market==='twse'?'上市市場':'上櫃市場',color:market==='twse'?'#157c9c':'#dc982d'}];
- return [...markets.map(r=>({...r,isMarket:true})),...entities.map((r,i)=>({...r,targetMarket:market,color:trendColors[(i+markets.length)%trendColors.length]}))];
+ return [...markets.map(r=>({...r,isMarket:true})),...entities.map((r,i)=>({...r,targetMarket:market,color:seriesColor(i+markets.length)}))];
 }
 function growthAmount(def,month){
  const monthReports=comparisonReports.filter(report=>report.month===month),required=marketsFor(def.targetMarket);
  if(!required.every(name=>monthReports.some(report=>report.market===name)))return null;
- const result=aggregate(monthReports,def.targetMarket,def.isMarket?'group':def.kind==='group'?'group':'branch',def.parent||'');
+ const kind=def.isMarket||def.kind==='group'?'group':'branch',key=`${month}:${def.targetMarket}:${kind}:${def.parent||''}`;
+ if(!growthAggregateCache.has(key))growthAggregateCache.set(key,aggregate(monthReports,def.targetMarket,kind,def.parent||''));
+ const result=growthAggregateCache.get(key);
  if(def.isMarket)return result.total;
  const row=result.rows.find(row=>row.code===def.code);
  return row&&required.every(name=>row.seen[name].has(month))?row.amount:null;
@@ -205,7 +211,7 @@ function renderGrowth(){
  let svg=`<svg class="trend-svg growth-svg" viewBox="0 0 1000 310" role="img" aria-label="成交金額成長率比較"><title>券商、分點與市場成交金額成長率比較</title>`;
  for(let i=0;i<=4;i++){const value=min+span*i/4;svg+=`<line x1="65" x2="965" y1="${y(value)}" y2="${y(value)}" stroke="${Math.abs(value)<span/50?'#8091a3':'#e5ecf2'}"/><text x="52" y="${y(value)+4}" text-anchor="end">${fmt(value,1)}%</text>`;}
  range.forEach((month,i)=>{if(i%Math.max(1,Math.ceil(range.length/8))===0||i===range.length-1)svg+=`<text x="${x(i)}" y="293" text-anchor="middle">${month}</text>`;});
- visibleSeries.forEach(item=>{let path='',active=false;item.values.forEach((value,i)=>{if(value==null){active=false;return;}path+=`${active?'L':'M'}${x(i)} ${y(value)} `;active=true;svg+=`<circle cx="${x(i)}" cy="${y(value)}" r="3" fill="${value>=0?'#c44747':'#087c67'}"><title>${range[i]} ${esc(item.def.label)} ${growthLabel(value)}</title></circle>`;});svg+=`<path d="${path}" fill="none" stroke="${item.def.color}" stroke-width="${item.def.isMarket?3:2.3}" ${item.def.isMarket?'stroke-dasharray="8 4"':''}/>`;});
+ visibleSeries.forEach(item=>{let path='',active=false;item.values.forEach((value,i)=>{if(value==null){active=false;return;}path+=`${active?'L':'M'}${x(i)} ${y(value)} `;active=true;if(definitions.length<=20)svg+=`<circle cx="${x(i)}" cy="${y(value)}" r="3" fill="${value>=0?'#c44747':'#087c67'}"><title>${range[i]} ${esc(item.def.label)} ${growthLabel(value)}</title></circle>`;});svg+=`<path d="${path}" fill="none" stroke="${item.def.color}" stroke-width="${item.def.isMarket?3:2.3}" ${item.def.isMarket?'stroke-dasharray="8 4"':''}/>`;});
  svg+='</svg>';
  const latest=range.at(-1),summary=definitions.map(def=>({def,...growthSummary(def)})),benchmark=summary.find(row=>row.def.isMarket&&row.def.targetMarket===market)||summary.find(row=>row.def.isMarket);
  const rateCell=value=>`<td class="${value==null?'':value>0?'positive':value<0?'negative':''}">${growthLabel(value)}</td>`;
@@ -236,12 +242,12 @@ function epsChart(series,labels,aria,unit='元',signed=false,toggle=false){
  let svg=`<svg class="trend-svg" viewBox="0 0 1000 310" role="img" aria-label="${esc(aria)}"><title>${esc(aria)}</title>`;
  for(let i=0;i<=4;i++){const v=min+span*i/4;svg+=`<line x1="65" x2="965" y1="${y(v)}" y2="${y(v)}" stroke="${Math.abs(v)<span/40?'#9aaabd':'#e5ecf2'}"/><text x="52" y="${y(v)+4}" text-anchor="end">${fmt(v,2)}</text>`;}
  labels.forEach((label,i)=>{if(i%Math.max(1,Math.ceil(labels.length/10))===0||i===labels.length-1)svg+=`<text x="${x(i)}" y="293" text-anchor="middle">${esc(label)}</text>`;});
- visible.forEach(s=>{let path='',active=false;s.values.forEach((point,i)=>{if(point==null){active=false;return;}path+=`${active?'L':'M'}${x(i)} ${y(point.value)} `;active=true;const color=signed?(point.value>=0?'#c44747':'#087c67'):s.color;svg+=`<circle cx="${x(i)}" cy="${y(point.value)}" r="3.5" fill="${color}"><title>${esc(point.title)}：${fmt(point.value,3)} ${unit}</title></circle>`;});svg+=`<path d="${path}" fill="none" stroke="${s.color}" stroke-width="2.7"/>`;});
+ visible.forEach(s=>{let path='',active=false;s.values.forEach((point,i)=>{if(point==null){active=false;return;}path+=`${active?'L':'M'}${x(i)} ${y(point.value)} `;active=true;if(series.length<=20){const color=signed?(point.value>=0?'#c44747':'#087c67'):s.color;svg+=`<circle cx="${x(i)}" cy="${y(point.value)}" r="3.5" fill="${color}"><title>${esc(point.title)}：${fmt(point.value,3)} ${unit}</title></circle>`;}});svg+=`<path d="${path}" fill="none" stroke="${s.color}" stroke-width="2.7"/>`;});
  return svg+'</svg>'+legend;
 }
 const epsGrowthRate=positiveBaseGrowthRate;
 function epsValue(code,month,field='monthlyEstimatedEps'){
- const report=epsComparisonReports.find(item=>item.month===month),row=report?.rows.find(item=>item.code===code);
+ const row=epsRowIndex.get(`${month}:${code}`);
  return row&&Number.isFinite(row[field])?row[field]:null;
 }
 function epsPeriodValue(code,months){
@@ -254,18 +260,19 @@ function epsMetrics(code,months){
 }
 function renderEpsPicker(){
  $('#eps-trend-picker').hidden=epsMode!=='all';
- $('#eps-trend-chips').innerHTML=epsSelections.length?epsSelections.map((code,index)=>{const broker=epsManifest?.brokers.find(row=>row.code===code);return`<button type="button" data-eps-remove="${index}" title="移除 ${esc(broker?.name||code)}"><i style="--color:${trendColors[index]}"></i>${esc(broker?.name||code)} ×</button>`;}).join(''):'<span>尚未手動加入；目前顯示區間 EPS 排名前十家。</span>';
+ const presetButton=$('#eps-preset-chart');presetButton.hidden=epsPreset==='all'||epsMode!=='all';presetButton.textContent=epsPresetChart?'恢復預設曲線':'顯示此選項全部券商';
+ $('#eps-trend-chips').innerHTML=epsSelections.length?epsSelections.map((code,index)=>{const broker=epsManifest?.brokers.find(row=>row.code===code);return`<button type="button" data-eps-remove="${index}" title="移除 ${esc(broker?.name||code)}"><i style="--color:${seriesColor(index)}"></i>${esc(broker?.name||code)} ×</button>`;}).join(''):`<span>${epsPresetChart?'已顯示快速選項中全部有資料的券商；可在圖例逐條關閉。':'尚未手動加入；目前顯示符合條件的領先券商。'}</span>`;
  const code=$('#eps-compare-broker').value;
  $('#eps-compare-add').disabled=epsSelections.length>=10||!code||epsSelections.includes(code);
 }
 function epsAllChart(rows,months){
- const leaders=epsSelections.length?epsSelections.map(code=>rows.find(row=>row.code===code)).filter(Boolean):rows.filter(row=>row.period!=null).slice().sort((a,b)=>b.period-a.period).slice(0,epsPreset==='all'?10:15),metricNames={monthly:'每月 EPS',mom:'月增率','cumulative-growth':'累計 EPS 成長率',cumulative:'累計 EPS',annual:'逐年 EPS'},percent=['mom','cumulative-growth'].includes(epsAllMetric),scope=epsSelections.length?'自選券商':epsPreset==='all'?'區間 EPS 排名前十家券商':'快速選項券商';
+ const leaders=epsPresetChart?rows:epsSelections.length?epsSelections.map(code=>rows.find(row=>row.code===code)).filter(Boolean):rows.filter(row=>row.period!=null).slice().sort((a,b)=>b.period-a.period).slice(0,epsPreset==='all'?10:15),metricNames={monthly:'每月 EPS',mom:'月增率','cumulative-growth':'累計 EPS 成長率',cumulative:'累計 EPS',annual:'逐年 EPS'},percent=['mom','cumulative-growth'].includes(epsAllMetric),scope=epsPresetChart?'快速選項全部券商':epsSelections.length?'自選券商':epsPreset==='all'?'區間 EPS 排名前十家券商':'快速選項券商';
  if(epsAllMetric==='annual'){
   const years=[...new Set(months.map(month=>month.slice(0,4)))],yearEnds=years.map(year=>months.filter(month=>month.startsWith(year)).at(-1));
-  const series=leaders.map((row,index)=>({key:row.code,name:row.name,color:trendColors[index%trendColors.length],values:yearEnds.map(month=>{const value=epsValue(row.code,month,'estimatedEps');return value==null?null:{value,title:`${month} ${row.name} 年度累計 EPS`};})}));
+  const series=leaders.map((row,index)=>({key:row.code,name:row.name,color:seriesColor(index),values:yearEnds.map(month=>{const value=epsValue(row.code,month,'estimatedEps');return value==null?null:{value,title:`${month} ${row.name} 年度累計 EPS`};})}));
   return epsChart(series,years,`${scope}逐年累計 EPS 曲線`,'元',false,true);
  }
- const series=leaders.map((row,index)=>({key:row.code,name:row.name,color:trendColors[index%trendColors.length],values:months.map((month,i)=>{const currentMonths=months.slice(0,i+1);let value;if(epsAllMetric==='monthly')value=epsValue(row.code,month);else if(epsAllMetric==='mom')value=epsGrowthRate(epsValue(row.code,month),epsValue(row.code,shiftMonth(month,-1)));else{const cumulative=epsPeriodValue(row.code,currentMonths);value=epsAllMetric==='cumulative'?cumulative:epsGrowthRate(cumulative,epsPeriodValue(row.code,currentMonths.map(item=>shiftMonth(item,-12))));}return value==null?null:{value,title:`${month} ${row.name} ${metricNames[epsAllMetric]}`};})}));
+ const series=leaders.map((row,index)=>({key:row.code,name:row.name,color:seriesColor(index),values:months.map((month,i)=>{const currentMonths=months.slice(0,i+1);let value;if(epsAllMetric==='monthly')value=epsValue(row.code,month);else if(epsAllMetric==='mom')value=epsGrowthRate(epsValue(row.code,month),epsValue(row.code,shiftMonth(month,-1)));else{const cumulative=epsPeriodValue(row.code,currentMonths);value=epsAllMetric==='cumulative'?cumulative:epsGrowthRate(cumulative,epsPeriodValue(row.code,currentMonths.map(item=>shiftMonth(item,-12))));}return value==null?null:{value,title:`${month} ${row.name} ${metricNames[epsAllMetric]}`};})}));
  return epsChart(series,months,`${scope}${metricNames[epsAllMetric]}曲線`,percent?'%':'元',percent,true);
 }
 function renderAllEps(reports){
@@ -274,7 +281,7 @@ function renderAllEps(reports){
  const metricName={monthly:'每月 EPS',mom:'月增率','cumulative-growth':'累計 EPS 成長率',cumulative:'累計 EPS',annual:'逐年 EPS'}[epsAllMetric];
  $('#eps-title').textContent=`所選區間${epsPreset==='all'?'全部券商':'快速選項券商'}・${metricName}`;
  $('#eps-chart').innerHTML=epsAllChart(chartRows,months);
- $('#eps-status').textContent=`${months[0]} — ${latest} · ${rows.length} 家券商 · ${epsSelections.length?`曲線自選 ${epsSelections.length} 家券商`:epsPreset==='all'?'曲線顯示區間 EPS 排名前十家':'曲線顯示符合快速選項的券商（最多十五家）'}`;
+ $('#eps-status').textContent=`${months[0]} — ${latest} · ${rows.length} 家券商 · ${epsPresetChart?`曲線顯示快速選項全部 ${rows.length} 家券商`:epsSelections.length?`曲線自選 ${epsSelections.length} 家券商`:epsPreset==='all'?'曲線顯示區間 EPS 排名前十家':'曲線顯示符合快速選項的券商（最多十五家）'}`;
  $('#eps-thead').innerHTML=`<tr>${sortableHead('排名','rank')}${sortableHead('券商','name')}${sortableHead('最新月份 EPS（元）','current')}${sortableHead('月增率','mom')}${sortableHead('年增率','yoy')}${sortableHead('區間 EPS（元）','period')}${sortableHead('去年同期 EPS（元）','prior')}${sortableHead('同期比率','periodRate')}${sortableHead('資料月份','listed')}</tr>`;
  updateSortHeaders('#eps-thead',epsSort,'data-eps-sort');
  const rate=value=>`<td class="growth-rate ${value==null?'':value>0?'positive':value<0?'negative':''}">${growthLabel(value)}</td>`;
@@ -320,11 +327,11 @@ async function queryEps(){
    const historyStart=shiftMonth(months[0],-12)<available[0]?available[0]:shiftMonth(months[0],-12),historyMonths=monthRange(historyStart,months.at(-1)).filter(month=>epsManifest.months[month]);
   let loaded=[];
   for(let i=0;i<historyMonths.length;i+=8){loaded.push(...await Promise.all(historyMonths.slice(i,i+8).map(async month=>{const path=`data/eps/${month}.json`;if(!epsCache.has(path))epsCache.set(path,await json(path));return epsCache.get(path);})));if(ticket!==epsVersion)return;}
-   if(ticket===epsVersion){epsComparisonReports=loaded.sort((a,b)=>a.month.localeCompare(b.month));const selected=epsComparisonReports.filter(report=>months.includes(report.month));applyEpsPreset(months);renderEps(selected);const companies=new Set(selected.flatMap(report=>report.rows.map(row=>row.code))).size,notice=[fallback,missing.length?`${missing.join('、')} 尚無已抓取的財務資料，未以 0 代替`:''].filter(Boolean).join(' · ');$('#eps-status').textContent+=` · 已公布並抓取 ${companies} 家券商${notice?' · '+notice:''}`;$('#eps-status').className=`eps-status${notice?' warning':''}`;}
+   if(ticket===epsVersion){epsComparisonReports=loaded.sort((a,b)=>a.month.localeCompare(b.month));epsRowIndex=new Map(epsComparisonReports.flatMap(report=>report.rows.map(row=>[`${report.month}:${row.code}`,row])));const selected=epsComparisonReports.filter(report=>months.includes(report.month));applyEpsPreset(months);renderEps(selected);const companies=new Set(selected.flatMap(report=>report.rows.map(row=>row.code))).size,notice=[fallback,missing.length?`${missing.join('、')} 尚無已抓取的財務資料，未以 0 代替`:''].filter(Boolean).join(' · ');$('#eps-status').textContent+=` · 已公布並抓取 ${companies} 家券商${notice?' · '+notice:''}`;$('#eps-status').className=`eps-status${notice?' warning':''}`;}
  }catch(error){if(ticket===epsVersion){$('#eps-status').textContent=error.message;$('#eps-status').className='eps-status error';$('#eps-chart').innerHTML='';$('#eps-tbody').innerHTML='';}}
 }
 function epsRow(r,month,metrics){const rate=value=>`<td class="growth-rate ${value==null?'':value>0?'positive':value<0?'negative':''}">${growthLabel(value)}</td>`,number=(value,digits)=>`<td>${fmt(value,digits)}</td>`;return`<tr><td><button data-eps-code="${esc(r.code)}">${esc(r.name)}</button><small>${esc(r.code)}</small></td><td>${month}</td>${number(r.monthlyNetIncomeThousands,0)}${number(r.monthlyEstimatedEps,3)}${rate(metrics.mom)}${rate(metrics.yoy)}${rate(metrics.periodRate)}${number(r.netIncomeThousands,0)}${number(r.estimatedEps,3)}<td>${fmt(r.capitalThousands,0)}</td><td>${fmt(r.estimatedShares,0)}</td></tr>`;}
-function choose(code){if(code.endsWith('*')){$('#broker').value=code;$('#branch').value='';updateBranches();}else{const row=viewRows.find(r=>r.code===code);if(row?.parent&&$('#broker').value!==row.parent){$('#broker').value=row.parent;updateBranches();}$('#branch').value=code;}const closed=$('#broker').value.replace('*','0');if(closures.some(r=>r.code===closed))$('#closed-broker').value=closed;render();}
+function choose(code){marketPresetChart=false;if(code.endsWith('*')){$('#broker').value=code;$('#branch').value='';updateBranches();}else{const row=viewRows.find(r=>r.code===code);if(row?.parent&&$('#broker').value!==row.parent){$('#broker').value=row.parent;updateBranches();}$('#branch').value=code;}const closed=$('#broker').value.replace('*','0');if(closures.some(r=>r.code===closed))$('#closed-broker').value=closed;render();}
 function toggleLine(set,key){set.has(key)?set.delete(key):set.add(key);}
 $('#chart').addEventListener('click',e=>{const line=e.target.closest('[data-line-type]');if(line){toggleLine(line.dataset.lineType==='growth'?growthHidden:trendHidden,line.dataset.lineKey);render();return;}const b=e.target.closest('[data-code]');if(b)choose(b.dataset.code);});
 $('#eps-chart').addEventListener('click',e=>{const line=e.target.closest('[data-line-type="eps"]');if(!line)return;toggleLine(epsHidden,line.dataset.lineKey);queryEps();});
@@ -336,21 +343,23 @@ $('#trend-frequency').addEventListener('click',e=>{const b=e.target.closest('[da
 $('#growth-metrics').addEventListener('click',e=>{const b=e.target.closest('[data-growth]');if(!b)return;growthMetric=b.dataset.growth;$('#growth-metrics').querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x===b));if(reports.length)render();});
 $('#trend-broker').addEventListener('change',()=>{updateTrendBranches();renderTrendPicker();});
 $('#trend-branch').addEventListener('change',renderTrendPicker);
-$('#trend-add').addEventListener('click',()=>{const entity=trendEntity();if(!entity||trendSelections.length>=10||trendSelections.some(r=>r.code===entity.code&&r.kind===entity.kind&&r.parent===entity.parent))return;trendSelections.push(entity);if(mode==='bars'){mode='trend';$('#chart-modes').querySelectorAll('button').forEach(button=>button.setAttribute('aria-pressed',button.dataset.mode===mode));}render();});
+$('#trend-add').addEventListener('click',()=>{const entity=trendEntity();if(!entity||trendSelections.length>=10||trendSelections.some(r=>r.code===entity.code&&r.kind===entity.kind&&r.parent===entity.parent))return;marketPresetChart=false;trendSelections.push(entity);if(mode==='bars'){mode='trend';$('#chart-modes').querySelectorAll('button').forEach(button=>button.setAttribute('aria-pressed',button.dataset.mode===mode));}render();});
 $('#trend-chips').addEventListener('click',e=>{const b=e.target.closest('[data-remove]');if(!b)return;trendSelections.splice(Number(b.dataset.remove),1);render();});
-$('#market-preset').addEventListener('change',()=>{marketPreset=$('#market-preset').value;trendSelections=[];applyMarketPreset();updateBranches();updateTrendBranches();render();});
-$('#market-city').addEventListener('change',()=>{trendSelections=[];applyMarketPreset();updateBranches();updateTrendBranches();render();});
-$('#broker').addEventListener('change',()=>{const code=$('#broker').value.replace('*','0');if(closures.some(r=>r.code===code))$('#closed-broker').value=code;$('#branch').value='';updateBranches();render();});
-$('#branch').addEventListener('change',render);$('#search').addEventListener('input',renderTable);
+$('#market-preset-chart').addEventListener('click',()=>{marketPresetChart=!marketPresetChart;if(marketPresetChart){trendSelections=[];$('#broker').value='';updateBranches();mode='trend';$('#chart-modes').querySelectorAll('button').forEach(button=>button.setAttribute('aria-pressed',button.dataset.mode===mode));}render();});
+$('#market-preset').addEventListener('change',()=>{marketPreset=$('#market-preset').value;marketPresetChart=false;trendSelections=[];applyMarketPreset();$('#broker').value='';updateBranches();updateTrendBranches();render();});
+$('#market-city').addEventListener('change',()=>{marketPresetChart=false;trendSelections=[];applyMarketPreset();$('#broker').value='';updateBranches();updateTrendBranches();render();});
+$('#broker').addEventListener('change',()=>{marketPresetChart=false;const code=$('#broker').value.replace('*','0');if(closures.some(r=>r.code===code))$('#closed-broker').value=code;$('#branch').value='';updateBranches();render();});
+$('#branch').addEventListener('change',()=>{marketPresetChart=false;render();});$('#search').addEventListener('input',renderTable);
 $('#closed-broker').addEventListener('change',renderClosures);
 $('#market-thead').addEventListener('click',e=>{const button=e.target.closest('[data-market-sort]');if(!button)return;const key=button.dataset.marketSort;marketSort=marketSort.key===key?{key,dir:marketSort.dir==='asc'?'desc':'asc'}:{key,dir:['name','rank'].includes(key)?'asc':'desc'};renderTable();});
 $('#feature-tabs').addEventListener('click',e=>{const b=e.target.closest('[data-feature]');if(!b)return;const eps=b.dataset.feature==='eps';$('#market-view').hidden=eps;$('#eps-view').hidden=!eps;$('#feature-tabs').querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x===b));$('.heading .eyebrow').textContent=eps?'BROKER PROFITABILITY':'MARKET SHARE EXPLORER';$('.heading h1').innerHTML=eps?'比較券商的獲利軌跡<span>。</span>':'看見券商的市場版圖<span>。</span>';$('.heading>div:first-child>p:not(.eyebrow)').textContent=eps?'依年度同期、每月與累計估算 EPS 觀察券商獲利變化。':'從整體市場到分公司，以官方成交金額追蹤市占變化。';});
 $('#eps-modes').addEventListener('click',e=>{const b=e.target.closest('[data-eps-mode]');if(!b)return;epsMode=b.dataset.epsMode;epsSort=epsMode==='all'?{key:'period',dir:'desc'}:{key:'month',dir:'desc'};$('#eps-modes').querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x===b));queryEps();});
 $('#eps-all-metrics').addEventListener('click',e=>{const b=e.target.closest('[data-eps-all-metric]');if(!b)return;epsAllMetric=b.dataset.epsAllMetric;$('#eps-all-metrics').querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x===b));queryEps();});
 $('#eps-compare-broker').addEventListener('change',renderEpsPicker);
-$('#eps-preset').addEventListener('change',()=>{epsPreset=$('#eps-preset').value;epsSelections=[];queryEps();});
-$('#eps-city').addEventListener('change',()=>{epsSelections=[];queryEps();});
-$('#eps-compare-add').addEventListener('click',()=>{const code=$('#eps-compare-broker').value;if(!code||epsSelections.length>=10||epsSelections.includes(code))return;epsSelections.push(code);$('#eps-compare-broker').value='';renderEpsPicker();queryEps();});
+$('#eps-preset').addEventListener('change',()=>{epsPreset=$('#eps-preset').value;epsPresetChart=false;epsSelections=[];queryEps();});
+$('#eps-city').addEventListener('change',()=>{epsPresetChart=false;epsSelections=[];queryEps();});
+$('#eps-preset-chart').addEventListener('click',()=>{epsPresetChart=!epsPresetChart;if(epsPresetChart){epsSelections=[];epsMode='all';$('#eps-modes').querySelectorAll('button').forEach(button=>button.setAttribute('aria-pressed',button.dataset.epsMode===epsMode));}queryEps();});
+$('#eps-compare-add').addEventListener('click',()=>{const code=$('#eps-compare-broker').value;if(!code||epsSelections.length>=10||epsSelections.includes(code))return;epsPresetChart=false;epsSelections.push(code);$('#eps-compare-broker').value='';renderEpsPicker();queryEps();});
 $('#eps-trend-chips').addEventListener('click',e=>{const b=e.target.closest('[data-eps-remove]');if(!b)return;epsSelections.splice(Number(b.dataset.epsRemove),1);renderEpsPicker();queryEps();});
 $('#eps-broker').addEventListener('change',queryEps);
 $('.eps-panel').addEventListener('click',e=>{const b=e.target.closest('[data-eps-code]');if(!b)return;$('#eps-broker').value=b.dataset.epsCode;epsMode='monthly';epsSort={key:'month',dir:'desc'};$('#eps-modes').querySelectorAll('button').forEach(button=>button.setAttribute('aria-pressed',button.dataset.epsMode===epsMode));queryEps();});

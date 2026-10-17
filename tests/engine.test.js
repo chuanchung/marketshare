@@ -28,6 +28,16 @@ test('mixed company and branch trend selections retain their own parent mapping'
  const p=monthlyEntities(reports,'twse',[{code:'102*',kind:'group'},{code:'9801',kind:'branch',parent:'980*'}]);
  assert.deepEqual(p[0].values.map(x=>x.amount),[30,40]);
 });
+test('preset-sized monthly comparisons retain every broker and missing-month gaps',()=>{
+ const codes=Array.from({length:24},(_,index)=>`${String(index+100).padStart(3,'0')}*`);
+ const entities=codes.map(code=>({code,kind:'group'}));
+ const reports=[report('2025-01','twse',1000,codes.map((code,index)=>row(code,index+1))),report('2025-02','twse',1000,codes.slice(0,-1).map((code,index)=>row(code,index+2)))];
+ const points=monthlyEntities(reports,'twse',entities);
+ assert.equal(points[0].values.length,24);
+ assert.equal(points[0].values.at(-1).amount,24);
+ assert.equal(points[1].values.at(-1),null);
+ assert.equal(points[1].values[22].amount,24);
+});
 test('every bundled EPS report follows the documented capital-based formula',()=>{
  const files=readdirSync(new URL('../site/data/eps/',import.meta.url)).filter(x=>x.endsWith('.json'));
  const manifest=JSON.parse(readFileSync(new URL('../site/data/eps-manifest.json',import.meta.url)));

@@ -41,8 +41,12 @@ export function monthly(reports,market,codes,kind='group',parent=''){
  });
 }
 export function monthlyEntities(reports,market,entities){
- return [...new Set(reports.map(r=>r.month))].sort().map(month=>({month,values:entities.map(entity=>{
-  const a=aggregate(reports.filter(r=>r.month===month),market,entity.kind==='group'?'group':'branch',entity.parent||'');
-  return a.rows.find(r=>r.code===entity.code)??null;
- })}));
+ return [...new Set(reports.map(r=>r.month))].sort().map(month=>{
+  const monthlyReports=reports.filter(r=>r.month===month),cache=new Map();
+  return{month,values:entities.map(entity=>{
+   const kind=entity.kind==='group'?'group':'branch',parent=entity.parent||'',key=`${kind}:${parent}`;
+   if(!cache.has(key))cache.set(key,new Map(aggregate(monthlyReports,market,kind,parent).rows.map(row=>[row.code,row])));
+   return cache.get(key).get(entity.code)??null;
+  })};
+ });
 }
