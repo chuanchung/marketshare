@@ -143,3 +143,14 @@ test('nine historical trading codes resolve to Taipei without changing trading t
   assert.equal(byCode.get(code).address,'');
  }
 });
+test('city office top fifteen follows selected-period turnover order',()=>{
+ const directory=JSON.parse(readFileSync(new URL('../site/data/offices.json',import.meta.url),'utf8'));
+ const cityCodes=officeCodesInCity(directory,'臺北市');
+ const reports=['twse','tpex'].map(market=>JSON.parse(readFileSync(new URL(`../site/data/months/2025-01-${market}.json`,import.meta.url),'utf8')));
+ const cityRows=aggregate(reports,'both','office').rows.filter(row=>cityCodes.has(row.code));
+ assert.ok(cityRows.length>15);
+ const top=cityRows.slice(0,15);
+ assert.equal(top.length,15);
+ assert.ok(top.every((row,index)=>index===0||top[index-1].amount>=row.amount));
+ assert.ok(cityRows[15].amount<=top.at(-1).amount);
+});
