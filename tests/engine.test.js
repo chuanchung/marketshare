@@ -112,3 +112,24 @@ test('bank, active foreign, top fifteen and county presets preserve code identit
  assert.deepEqual(turnoverLeaders(turnover,['2025-01','2025-02'],'both'),['102*','136*']);
  assert.deepEqual(turnoverLeaders(turnover,['2025-01','2025-02'],'both',true),['102*']);
 });
+test('nine historical trading codes resolve to Taipei without changing trading totals',()=>{
+ const directory=JSON.parse(readFileSync(new URL('../site/data/offices.json',import.meta.url),'utf8'));
+ const expected=['538L','8889','888V','9182','9203','9699','9887','9A95','9B17'];
+ const byCode=new Map(directory.rows.map(row=>[row.code,row]));
+ assert.equal(byCode.size,directory.rows.length);
+ for(const code of expected){
+  assert.equal(byCode.get(code)?.city,'臺北市',code);
+  assert.ok(officeCodesInCity(directory,'臺北市').has(code),code);
+ }
+ assert.equal(byCode.get('8889').address,byCode.get('888V').address);
+ assert.equal(byCode.get('8889').address.replace('大安區',''),byCode.get('8888').address);
+ assert.equal(byCode.get('9B17').address,'台北市中山區中山北路二段44號2樓');
+ for(const [office,head] of [['538L','5380'],['9182','9100'],['9203','9200'],['9699','9600'],['9887','9800'],['9A95','9A00']]){
+  assert.equal(byCode.get(office).relatedHeadCode,head);
+  assert.equal(byCode.get(office).city,byCode.get(head).city);
+ }
+ for(const code of ['9182','9203','9699','9887','9A95']){
+  assert.equal(byCode.get(code).locationBasis,'head-city');
+  assert.equal(byCode.get(code).address,'');
+ }
+});

@@ -13,6 +13,23 @@ from update_data import DATA, fetch, save
 
 HEAD_URL = 'https://www.twse.com.tw/brokerService/brokerList?response=open_data'
 BRANCH_URL = 'https://mopsfin.twse.com.tw/opendata/OpenData_BRK02.csv'
+CATHAY_URL = 'https://www.cathaysec.com.tw/exclude_al/friendly/location.html'
+TAISHIN_URL = 'https://www.tssco.com.tw/TSHOLDINGSMERGE/locations/index.html'
+FIRST_URL = 'https://www.taifex.com.tw/cht/4/fCMData?fut_id=S538'
+# These trading codes are absent from the current TWSE/MOPS office export.
+# A head-office link supplies a city for historical brokerage departments; it
+# must never be used to add their turnover to the head-office trading row.
+EXTRA_OFFICES = {
+    '538L': ('第一金華山／經紀部', '台北市中山區長安東路一段22號4樓', '5380', FIRST_URL),
+    '8889': ('國泰敦南', '台北市大安區敦化南路二段218號5樓之1', None, CATHAY_URL),
+    '888V': ('國泰敦南', '台北市大安區敦化南路二段218號5樓之1', None, CATHAY_URL),
+    '9B17': ('台新營業部', '台北市中山區中山北路二段44號2樓', None, TAISHIN_URL),
+    '9182': ('群益金鼎經紀部', None, '9100', None),
+    '9203': ('凱基經紀部', None, '9200', None),
+    '9699': ('富邦經紀部', None, '9600', None),
+    '9887': ('元大經紀部', None, '9800', None),
+    '9A95': ('永豐金經紀部', None, '9A00', None),
+}
 CITIES = (
     '臺北市', '新北市', '桃園市', '臺中市', '臺南市', '高雄市',
     '基隆市', '新竹市', '嘉義市', '新竹縣', '苗栗縣', '彰化縣',
@@ -59,6 +76,20 @@ def parse_directory(head_bytes: bytes, branch_bytes: bytes) -> dict:
         raise ValueError('Incomplete branch directory')
     if len({row['code'] for row in rows}) != len(rows):
         raise ValueError('Duplicate office code across directories')
+    indexed = {row['code']: row for row in rows}
+    for code, (name, address, head_code, source) in EXTRA_OFFICES.items():
+        # An official directory entry takes precedence if it appears later.
+        if code in indexed:
+            continue
+        head = indexed.get(head_code) if head_code else None
+        city = city_for(address) if address else head['city'] if head else None
+        if not city:
+            raise ValueError(f'No verified city for {code}')
+        rows.append(dict(code=code, kind='branch', name=name,
+                         address=address or '', city=city,
+                         locationBasis='office' if address else 'head-city',
+                         **({'relatedHeadCode': head_code} if head_code else {}),
+                         **({'source': source} if source else {})))
     return dict(version=1, updated=dt.datetime.now(dt.timezone.utc).isoformat(),
                 sources=dict(head=HEAD_URL, branch=BRANCH_URL), cities=CITIES, rows=rows)
 
