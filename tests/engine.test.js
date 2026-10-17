@@ -29,7 +29,9 @@ test('mixed company and branch trend selections retain their own parent mapping'
 });
 test('every bundled EPS report follows the documented capital-based formula',()=>{
  const files=readdirSync(new URL('../site/data/eps/',import.meta.url)).filter(x=>x.endsWith('.json'));
- assert.equal(files.length,140);
+ const manifest=JSON.parse(readFileSync(new URL('../site/data/eps-manifest.json',import.meta.url)));
+ assert.ok(files.length>=140);
+ assert.deepEqual(files.sort(),Object.values(manifest.months).sort());
  for(const file of files){
   const report=JSON.parse(readFileSync(new URL(`../site/data/eps/${file}`,import.meta.url)));
   assert.equal(report.month,file.slice(0,7));assert.ok(report.rows.length>=20);
