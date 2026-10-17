@@ -126,8 +126,12 @@ def clean_name(c,name,names):
 def parse_twse_legacy(source):
     names=known_names(); raw=[]
     # Early 2015 workbooks can place records in two five-column print blocks.
-    for row in source:
+    for row_index, row in enumerate(source):
         for offset in (0,6):
+            # The right print block of the first three header rows in early
+            # 2015 workbooks contains stale 1060/1061/1062 Far Eastern data.
+            # The broker closed in 2006; these cells are not monthly records.
+            if offset == 6 and row_index < 3: continue
             if len(row)<offset+5: continue
             c=code(row[offset])
             if not re.fullmatch(r'[0-9A-Za-z]{3}[0-9A-Za-z*]',c): continue
@@ -288,12 +292,16 @@ def closures():
     return dict(source=url,updated=dt.datetime.now(dt.timezone.utc).isoformat(),rows=out)
 
 def rebuild_manifest(errors=None,warnings=None):
-    months={}; brokers={}
+    months={}; brokers={}; turnover={}
     for path in sorted((DATA/'months').glob('*.json')):
         j=json.loads(path.read_text(encoding='utf-8'))
         months.setdefault(j['month'],[]).append(j['market'])
         for r in j['rows']:
-            if r['kind']=='group': brokers[r['code']]=dict(code=r['code'],name=r['name'])
+            if r['kind']=='group':
+                brokers[r['code']]=dict(code=r['code'],name=r['name'])
+                if r['amount']:
+                    turnover.setdefault(j['month'],{}).setdefault(j['market'],{})[r['code']]=r['amount']
+    save(DATA/'turnover.json',dict(version=1,months=turnover))
     save(DATA/'manifest.json',dict(
         version=1,
         updated=dt.datetime.now(dt.timezone.utc).isoformat(),

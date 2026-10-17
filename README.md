@@ -2,7 +2,11 @@
 
 GitHub Pages 靜態網站，查詢券商總公司經紀合計、總公司營業單位及各分公司在上市、上櫃與合併市場的市占率，並提供綜合證券商估算 EPS 排行與月度走勢。包含可切換市占率／成交金額的堆疊長條圖、最多十家總公司或分公司的月度市占率比較曲線、可搜尋明細及結束營業紀錄。
 
-已收錄 **2015-01 至 2026-08，涵蓋 140 個月、280 份已驗證官方月報（140 個月具完整雙市場資料）**。沒有使用模擬資料。
+目前收錄 **2015-01 至 2026-09，涵蓋 141 個月的上市、上櫃官方月報**。沒有使用模擬資料。
+
+市占率與 EPS 各有八大行庫、前十五大、前十五大扣除現役外資及縣市快速選項。前十五大依所選月份與市場的券商經紀成交金額加總排名；EPS 以相同月份的上市＋上櫃成交金額排名，縣市依目前登記的總公司所在地篩選。EPS 只列官方財務月報提供資料的券商。市占率縣市選項按目前登記地址列出總公司營業單位與分公司，不回推歷史地址。沒有可靠地址的單位不分配縣市。
+
+2015-01 至 2015-08 的舊版上市 XLS 頁首右欄殘留已於 2006 年合併的遠東（1060）成交資料，原匯入程式曾誤列為當月交易。現已移除每月三筆誤列及虛構的 `106*` 合計，並重算全市場金額；遠東仍保留在結束營業查詢。
 
 **2026-02 上櫃的官方線上 XLS 與 ODS 下載曾回傳 2026-08 的內容；本月份改採使用者提供的官方月報 `11502brk3.xls`，經年月、總分公司小計與市場總額驗證後匯入。原始檔 SHA-256：`89812e50b1204348fb8998b37249acd7aeb228b4899a590ac7fae28d5d80a2d9`。**
 
@@ -33,6 +37,7 @@ python -m http.server 8765 --directory site
 pip install -r requirements.txt
 python scripts/update_data.py --start 2015-01
 python scripts/update_eps.py --start 2015-01
+python scripts/update_offices.py
 ```
 
 補抓指定區間或重抓修訂資料：
@@ -41,7 +46,7 @@ python scripts/update_eps.py --start 2015-01
 python scripts/update_data.py --start 2025-01 --end 2025-12 --refresh
 ```
 
-自動流程每天台灣時間 23:50 檢查新月份。已存在且通過驗證的月報不會重新下載；只有官方新增而版本庫尚未收錄的月份會下載、驗證、提交並部署。推送部署只使用版本庫已有的資料；手動執行也會跳過既有月份，除非在本機明確使用 `--refresh`。排程可能延遲，實際以 GitHub 執行時間為準。
+自動流程每天台灣時間 23:50 檢查新月份及總分公司地址。已存在且通過驗證的月報不會重新下載；只有官方新增而版本庫尚未收錄的月份會下載、驗證、提交並部署。地址目錄僅在內容變動時更新。推送部署只使用版本庫已有的資料；手動執行也會跳過既有月份，除非在本機明確使用 `--refresh`。排程可能延遲，實際以 GitHub 執行時間為準。
 
 若官方下載失敗、格式改變或金額核對不符，workflow 失敗並保留前次線上網站。若官方下載回傳錯誤月份，會排除該檔案並記錄警告，其他正確月份仍可更新；不會把缺失金額填為零。對官方格式更動採明確報錯，而非猜測新欄位。
 
@@ -62,6 +67,8 @@ python scripts/update_data.py --start 2025-01 --end 2025-12 --refresh
 - [TWSE 證券商月報－證券商成交金額表](https://www.twse.com.tw/zh/trading/statistics/index03.html)
 - [TPEx 證券商成交金額](https://www.tpex.org.tw/zh-tw/mainboard/trading/statistics/securities-firms/trading-amount.html)
 - [TWSE 證券商結束營業資料](https://dsp.twse.com.tw/brokerClose/list#tab1)
+- [TWSE 證券商總公司地址](https://www.twse.com.tw/brokerService/brokerList?response=open_data)
+- [TWSE 證券商分公司地址](https://data.gov.tw/dataset/44723)
 
 每份 JSON 附原始下載連結及下載檔 SHA-256。兩市場商品與交易涵蓋範圍以官方報表註記為準，合併值是這兩份月報的成交金額加總。
 
@@ -76,6 +83,7 @@ npm test
 - `site/`：全部公開靜態檔與已驗證月資料。
 - `scripts/update_data.py`：官方下載、解析及檢核。
 - `scripts/update_eps.py`：綜合證券商財務資料下載及估算 EPS 計算。
+- `scripts/update_offices.py`：目前總分公司地址及縣市目錄。
 - `tests/engine.test.js`：資料及計算測試。
 - `.github/workflows/pages.yml`：更新與部署。
 

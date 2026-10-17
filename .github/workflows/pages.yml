@@ -40,11 +40,15 @@ jobs:
         env:
           START_MONTH: ${{ inputs.start_month || '2015-01' }}
         run: python scripts/update_eps.py --start "$START_MONTH"
+      - name: Refresh current broker office addresses
+        if: github.event_name != 'push'
+        run: python scripts/update_offices.py
       - name: Validate data and calculations
         run: |
           npm test
           node --check site/app.js
           node --check site/engine.js
+          node --check site/presets.js
       - name: Save newly verified monthly data
         if: github.event_name != 'push'
         run: |

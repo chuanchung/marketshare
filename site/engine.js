@@ -25,8 +25,8 @@ export function aggregate(reports,market,kind='group',parent=''){
  const selected=reports.filter(r=>marketsFor(market).includes(r.market));
  const totals={twse:0,tpex:0};const map=new Map();
  for(const report of selected){totals[report.market]+=report.total;
-  for(const r of report.rows){if(kind==='group'?r.kind!=='group':!['head','branch'].includes(r.kind)||r.parent!==parent)continue;
-   let item=map.get(r.code);if(!item){item={code:r.code,name:r.name,kind:r.kind,twse:0,tpex:0,seen:{twse:new Set(),tpex:new Set()},names:new Set()};map.set(r.code,item);}
+  for(const r of report.rows){if(kind==='group'?r.kind!=='group':!['head','branch'].includes(r.kind)||(kind!=='office'&&r.parent!==parent))continue;
+   let item=map.get(r.code);if(!item){item={code:r.code,name:r.name,kind:r.kind,parent:r.parent,twse:0,tpex:0,seen:{twse:new Set(),tpex:new Set()},names:new Set()};map.set(r.code,item);}
    item.name=r.name;item.names.add(r.name);for(const alias of r.aliases||[])item.names.add(alias);item[report.market]+=r.amount;item.seen[report.market].add(report.month);
   }
  }
